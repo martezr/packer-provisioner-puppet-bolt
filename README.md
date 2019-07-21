@@ -1,2 +1,6 @@
-# packer-provisioner-puppet-bolt-local
-Packer Puppet Bolt Local Provisioner
+# packer-provisioner-puppet-bolt
+Packer Puppet Bolt Provisioner
+
+```
+docker run --rm -ti -v $(pwd):/go/src/ golang /bin/bash
+```
