@@ -45,11 +45,17 @@ type Config struct {
 	// The bolt task to execute.
 	BoltTask string `mapstructure:"bolt_task"`
 
+  // The bolt plan to execute.
+  BoltPlan string `mapstructure:"bolt_plan"`
+
+  // The bolt module path
+  BoltModulePath string `mapstructure:"bolt_module_path"`
+
 	// The optional inventory file
 	InventoryFile string `mapstructure:"inventory_file"`
-  LocalPort            int      `mapstructure:"local_port"`
+  LocalPort     int      `mapstructure:"local_port"`
 
-	User          string `mapstructure:"user"`
+	User                 string `mapstructure:"user"`
   SSHHostKeyFile       string   `mapstructure:"ssh_host_key_file"`
 	SSHAuthorizedKeyFile string   `mapstructure:"ssh_authorized_key_file"`
 }
@@ -207,10 +213,32 @@ func (p *Provisioner) Cancel() {
 func (p *Provisioner) executeBolt(ui packer.Ui, comm packer.Communicator, privKeyFile string) error {
 //	inventory := p.config.InventoryFile
   bolttask := p.config.BoltTask
+  boltplan := p.config.BoltPlan
+  boltmodulepath := p.config.BoltModulePath
 
 //	var envvars []string
   target := "ssh://127.0.0.1:" + strconv.Itoa(p.config.LocalPort)
-	args := []string{"task", "run", bolttask, "--nodes", target, "--no-host-key-check", "--user", p.config.User, "--private-key", privKeyFile }
+  var boltcommand string
+  if p.config.BoltTask != "" {
+		boltcommand = "task"
+	} else {
+    boltcommand = "plan"
+  }
+  args := []string{boltcommand, "run"}
+  if p.config.BoltTask != "" {
+    args = append(args, bolttask)
+  } else {
+    args = append(args, boltplan)
+  }
+
+  if p.config.BoltModulePath != "" {
+    args = append(args, "--modulepath", boltmodulepath)
+  }
+
+  args = append(args, "--nodes", target)
+  args = append(args, "--no-host-key-check")
+  args = append(args, "--user", p.config.User)
+  args = append(args, "--private-key", privKeyFile)
 //	if len(privKeyFile) > 0 {
 		// Changed this from using --private-key to supplying -e bolt_ssh_private_key_file as the latter
 		// is treated as a highest priority variable, and thus prevents overriding by dynamic variables
