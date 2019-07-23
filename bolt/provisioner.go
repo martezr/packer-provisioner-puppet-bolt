@@ -54,7 +54,7 @@ type Config struct {
 	// The optional inventory file
 	InventoryFile string `mapstructure:"inventory_file"`
   LocalPort     int      `mapstructure:"local_port"`
-
+  SkipVersionCheck     bool     `mapstructure:"skip_version_check"`
 	User                 string `mapstructure:"user"`
   SSHHostKeyFile       string   `mapstructure:"ssh_host_key_file"`
 	SSHAuthorizedKeyFile string   `mapstructure:"ssh_authorized_key_file"`
@@ -64,6 +64,8 @@ type Provisioner struct {
 	config Config
   adapter          *adapter.Adapter
 	done             chan struct{}
+  boltVersion    string
+	boltMajVersion uint
 }
 
 type PassthroughTemplate struct {
@@ -97,6 +99,13 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		p.config.Command = "bolt"
 	}
 
+  if !p.config.SkipVersionCheck {
+		err = p.getVersion()
+		if err != nil {
+			errs = packer.MultiErrorAppend(errs, err)
+		}
+	}
+
 	if p.config.User == "" {
 		errs = packer.MultiErrorAppend(errs, fmt.Errorf("user: could not determine current user from environment."))
 	}
@@ -104,6 +113,33 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	if errs != nil && len(errs.Errors) > 0 {
 		return errs
 	}
+	return nil
+}
+
+func (p *Provisioner) getVersion() error {
+	out, err := exec.Command(p.config.Command, "--version").Output()
+	if err != nil {
+		return fmt.Errorf(
+			"Error running \"%s --version\": %s", p.config.Command, err.Error())
+	}
+
+	versionRe := regexp.MustCompile(`\w (\d+\.\d+[.\d+]*)`)
+	matches := versionRe.FindStringSubmatch(string(out))
+	if matches == nil {
+		return fmt.Errorf(
+			"Could not find %s version in output:\n%s", p.config.Command, string(out))
+	}
+
+	version := matches[1]
+	log.Printf("%s version: %s", p.config.Command, version)
+	p.boltVersion = version
+
+	majVer, err := strconv.ParseUint(strings.Split(version, ".")[0], 10, 0)
+	if err != nil {
+		return fmt.Errorf("Could not parse major version from \"%s\".", version)
+	}
+	p.boltMajVersion = uint(majVer)
+
 	return nil
 }
 
@@ -406,4 +442,10 @@ func newSigner(privKeyFile string) (*signer, error) {
 	}
 
 	return signer, nil
+}
+
+func getWinRMPassword(buildName string) string {
+	winRMPass, _ := commonhelper.RetrieveSharedState("winrm_password", buildName)
+	packer.LogSecretFilter.Set(winRMPass)
+	return winRMPass
 }

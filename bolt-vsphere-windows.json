@@ -1,0 +1,34 @@
+{
+  "variables": {
+    "vsphere_password": "",
+    "winrm_password": ""
+  },
+  "builders": [
+    {
+      "type": "vsphere-clone",
+
+      "vcenter_server":      "10.0.0.205",
+      "username":            "administrator@vsphere.local",
+      "password":            "{{user `vsphere_password`}}",
+      "insecure_connection": "true",
+
+      "template": "grt2k16temp",
+      "vm_name":  "winboltpacker",
+      "cluster": "GRT-Cluster",
+      "host": "10.0.0.246",
+
+      "communicator": "winrm",
+      "winrm_port": "5985",
+      "winrm_insecure": true,
+      "winrm_username": "administrator",
+      "winrm_password": "{{user `winrm_password`}}"
+    }
+  ],
+  "provisioners": [
+    {
+      "type": "puppet-bolt",
+      "user": "root",
+      "bolt_task": "facts"
+    }
+  ]
+}
