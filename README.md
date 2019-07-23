@@ -1,4 +1,14 @@
 # packer-provisioner-puppet-bolt
+
+[![Build Status](https://img.shields.io/travis/martezr/packer-provisioner-puppet-bolt/master.svg)][travis]
+[![GoReportCard][report-badge]][report]
+
+
+[travis]: https://travis-ci.org/martezr/packer-provisioner-puppet-bolt
+
+[report-badge]: https://goreportcard.com/badge/github.com/martezr/packer-provisioner-puppet-bolt
+[report]: https://goreportcard.com/report/github.com/martezr/packer-provisioner-puppet-bolt
+
 Packer Puppet Bolt Provisioner
 
 ```
