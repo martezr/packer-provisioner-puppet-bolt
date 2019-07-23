@@ -1,7 +1,7 @@
 package bolt
 
 import (
-  "bufio"
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/rand"
@@ -23,12 +23,11 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-
 	"github.com/hashicorp/packer/common"
-  "github.com/hashicorp/packer/common/adapter"
+	"github.com/hashicorp/packer/common/adapter"
 	"github.com/hashicorp/packer/helper/config"
 	"github.com/hashicorp/packer/packer"
-  "github.com/hashicorp/packer/packer/tmp"
+	"github.com/hashicorp/packer/packer/tmp"
 	"github.com/hashicorp/packer/template/interpolate"
 )
 
@@ -45,26 +44,26 @@ type Config struct {
 	// The bolt task to execute.
 	BoltTask string `mapstructure:"bolt_task"`
 
-  // The bolt plan to execute.
-  BoltPlan string `mapstructure:"bolt_plan"`
+	// The bolt plan to execute.
+	BoltPlan string `mapstructure:"bolt_plan"`
 
-  // The bolt module path
-  BoltModulePath string `mapstructure:"bolt_module_path"`
+	// The bolt module path
+	BoltModulePath string `mapstructure:"bolt_module_path"`
 
 	// The optional inventory file
-	InventoryFile string `mapstructure:"inventory_file"`
-  LocalPort     int      `mapstructure:"local_port"`
-  SkipVersionCheck     bool     `mapstructure:"skip_version_check"`
+	InventoryFile        string `mapstructure:"inventory_file"`
+	LocalPort            int    `mapstructure:"local_port"`
+	SkipVersionCheck     bool   `mapstructure:"skip_version_check"`
 	User                 string `mapstructure:"user"`
-  SSHHostKeyFile       string   `mapstructure:"ssh_host_key_file"`
-	SSHAuthorizedKeyFile string   `mapstructure:"ssh_authorized_key_file"`
+	SSHHostKeyFile       string `mapstructure:"ssh_host_key_file"`
+	SSHAuthorizedKeyFile string `mapstructure:"ssh_authorized_key_file"`
 }
 
 type Provisioner struct {
-	config Config
-  adapter          *adapter.Adapter
-	done             chan struct{}
-  boltVersion    string
+	config         Config
+	adapter        *adapter.Adapter
+	done           chan struct{}
+	boltVersion    string
 	boltMajVersion uint
 }
 
@@ -73,7 +72,7 @@ type PassthroughTemplate struct {
 }
 
 func (p *Provisioner) Prepare(raws ...interface{}) error {
-  p.done = make(chan struct{})
+	p.done = make(chan struct{})
 
 	// Create passthrough for winrm password so we can fill it in once we know
 	// it
@@ -92,14 +91,14 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		return err
 	}
 
-  var errs *packer.MultiError
+	var errs *packer.MultiError
 
 	// Defaults
 	if p.config.Command == "" {
 		p.config.Command = "bolt"
 	}
 
-  if !p.config.SkipVersionCheck {
+	if !p.config.SkipVersionCheck {
 		err = p.getVersion()
 		if err != nil {
 			errs = packer.MultiErrorAppend(errs, err)
@@ -146,7 +145,7 @@ func (p *Provisioner) getVersion() error {
 func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.Communicator) error {
 	ui.Say("Provisioning with Puppet Bolt...")
 
-  k, err := newUserKey(p.config.SSHAuthorizedKeyFile)
+	k, err := newUserKey(p.config.SSHAuthorizedKeyFile)
 	if err != nil {
 		return err
 	}
@@ -181,7 +180,7 @@ func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.C
 
 	config.AddHostKey(hostSigner)
 
-  localListener, err := func() (net.Listener, error) {
+	localListener, err := func() (net.Listener, error) {
 
 		port := p.config.LocalPort
 		tries := 1
@@ -214,11 +213,11 @@ func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.C
 		return err
 	}
 
-  ui = &packer.SafeUi{
+	ui = &packer.SafeUi{
 		Sem: make(chan int, 1),
 		Ui:  ui,
 	}
-  p.adapter = adapter.NewAdapter(p.done, localListener, config, "", ui, comm)
+	p.adapter = adapter.NewAdapter(p.done, localListener, config, "", ui, comm)
 
 	defer func() {
 		log.Print("shutting down the SSH proxy")
@@ -228,11 +227,11 @@ func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.C
 
 	go p.adapter.Serve()
 
-  if err := p.executeBolt(ui, comm, k.privKeyFile); err != nil {
-    return fmt.Errorf("Error executing Bolt: %s", err)
-  }
+	if err := p.executeBolt(ui, comm, k.privKeyFile); err != nil {
+		return fmt.Errorf("Error executing Bolt: %s", err)
+	}
 
-  return nil
+	return nil
 
 }
 
@@ -247,41 +246,41 @@ func (p *Provisioner) Cancel() {
 }
 
 func (p *Provisioner) executeBolt(ui packer.Ui, comm packer.Communicator, privKeyFile string) error {
-//	inventory := p.config.InventoryFile
-  bolttask := p.config.BoltTask
-  boltplan := p.config.BoltPlan
-  boltmodulepath := p.config.BoltModulePath
+	//	inventory := p.config.InventoryFile
+	bolttask := p.config.BoltTask
+	boltplan := p.config.BoltPlan
+	boltmodulepath := p.config.BoltModulePath
 
-//	var envvars []string
-  target := "ssh://127.0.0.1:" + strconv.Itoa(p.config.LocalPort)
-  var boltcommand string
-  if p.config.BoltTask != "" {
+	//	var envvars []string
+	target := "ssh://127.0.0.1:" + strconv.Itoa(p.config.LocalPort)
+	var boltcommand string
+	if p.config.BoltTask != "" {
 		boltcommand = "task"
 	} else {
-    boltcommand = "plan"
-  }
-  args := []string{boltcommand, "run"}
-  if p.config.BoltTask != "" {
-    args = append(args, bolttask)
-  } else {
-    args = append(args, boltplan)
-  }
+		boltcommand = "plan"
+	}
+	args := []string{boltcommand, "run"}
+	if p.config.BoltTask != "" {
+		args = append(args, bolttask)
+	} else {
+		args = append(args, boltplan)
+	}
 
-  if p.config.BoltModulePath != "" {
-    args = append(args, "--modulepath", boltmodulepath)
-  }
+	if p.config.BoltModulePath != "" {
+		args = append(args, "--modulepath", boltmodulepath)
+	}
 
-  args = append(args, "--nodes", target)
-  args = append(args, "--no-host-key-check")
-  args = append(args, "--user", p.config.User)
-  args = append(args, "--private-key", privKeyFile)
-//	if len(privKeyFile) > 0 {
-		// Changed this from using --private-key to supplying -e bolt_ssh_private_key_file as the latter
-		// is treated as a highest priority variable, and thus prevents overriding by dynamic variables
-		// as seen in #5852
-		// args = append(args, "--private-key", privKeyFile)
-//		args = append(args, fmt.Sprintf("--private-key %s", privKeyFile))
-//	}
+	args = append(args, "--nodes", target)
+	args = append(args, "--no-host-key-check")
+	args = append(args, "--user", p.config.User)
+	args = append(args, "--private-key", privKeyFile)
+	//	if len(privKeyFile) > 0 {
+	// Changed this from using --private-key to supplying -e bolt_ssh_private_key_file as the latter
+	// is treated as a highest priority variable, and thus prevents overriding by dynamic variables
+	// as seen in #5852
+	// args = append(args, "--private-key", privKeyFile)
+	//		args = append(args, fmt.Sprintf("--private-key %s", privKeyFile))
+	//	}
 
 	// expose packer_http_addr extra variable
 	httpAddr := common.GetHTTPAddr()
@@ -290,16 +289,16 @@ func (p *Provisioner) executeBolt(ui packer.Ui, comm packer.Communicator, privKe
 	}
 
 	args = append(args, p.config.ExtraArguments...)
-//	if len(p.config.BoltEnvVars) > 0 {
-//		envvars = append(envvars, p.config.BoltEnvVars...)
-//	}
+	//	if len(p.config.BoltEnvVars) > 0 {
+	//		envvars = append(envvars, p.config.BoltEnvVars...)
+	//	}
 
 	cmd := exec.Command(p.config.Command, args...)
 
 	cmd.Env = os.Environ()
-//	if len(envvars) > 0 {
-//		cmd.Env = append(cmd.Env, envvars...)
-//	}
+	//	if len(envvars) > 0 {
+	//		cmd.Env = append(cmd.Env, envvars...)
+	//	}
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -337,10 +336,10 @@ func (p *Provisioner) executeBolt(ui packer.Ui, comm packer.Communicator, privKe
 	// remove winrm password from command, if it's been added
 	flattenedCmd := strings.Join(cmd.Args, " ")
 	sanitized := flattenedCmd
-//	if len(getWinRMPassword(p.config.PackerBuildName)) > 0 {
-//		sanitized = strings.Replace(sanitized,
-//			getWinRMPassword(p.config.PackerBuildName), "*****", -1)
-//	}
+	//	if len(getWinRMPassword(p.config.PackerBuildName)) > 0 {
+	//		sanitized = strings.Replace(sanitized,
+	//			getWinRMPassword(p.config.PackerBuildName), "*****", -1)
+	//	}
 	ui.Say(fmt.Sprintf("Executing Bolt: %s", sanitized))
 
 	if err := cmd.Start(); err != nil {
