@@ -1,17 +1,17 @@
-# packer-provisioner-puppet-bolt
+Packer Puppet Bolt Provisioner
+=======
 
 [![Build Status](https://img.shields.io/travis/martezr/packer-provisioner-puppet-bolt/master.svg)][travis]
 [![GoReportCard][report-badge]][report]
 [![GitHub release](https://img.shields.io/github/release/martezr/packer-provisioner-puppet-bolt.svg)](https://github.com/martezr/packer-provisioner-puppet-bolt/releases/)
 [![license](https://img.shields.io/github/license/martezr/packer-provisioner-puppet-bolt.svg)](https://github.com/martezr/packer-provisioner-puppet-bolt/blob/master/LICENSE)
 
-
 [travis]: https://travis-ci.org/martezr/packer-provisioner-puppet-bolt
 
 [report-badge]: https://goreportcard.com/badge/github.com/martezr/packer-provisioner-puppet-bolt
 [report]: https://goreportcard.com/report/github.com/martezr/packer-provisioner-puppet-bolt
 
-Packer Puppet Bolt Provisioner
+HashiCorp Packer plugin that provisions machines using [Puppet Bolt](https://puppet.com/products/bolt)
 
 ```
 docker run --rm -ti -v $(pwd):/go/src/ golang /bin/bash
@@ -111,8 +111,14 @@ required parameters
 
 - bolt_task (string) - The bolt task to be run.
 
+or
+
+- bolt_plan (string) - The bolt plan to be run.
+
 Optional Parameters:
 ------
+
+- bolt_module_path (string) - The path that Bolt should look for modules.
 
 - inventory_file (string) - The inventory file to use during provisioning. When unspecified, Packer will create a temporary inventory file and will use the host_alias.
 
