@@ -16,6 +16,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+  "regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,6 +26,7 @@ import (
 
 	"github.com/hashicorp/packer/common"
 	"github.com/hashicorp/packer/common/adapter"
+  commonhelper "github.com/hashicorp/packer/helper/common"
 	"github.com/hashicorp/packer/helper/config"
 	"github.com/hashicorp/packer/packer"
 	"github.com/hashicorp/packer/packer/tmp"
