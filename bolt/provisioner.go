@@ -142,6 +142,7 @@ func (p *Provisioner) getVersion() error {
 	return nil
 }
 
+// Provision using the Puppet Bolt provisioner
 func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.Communicator) error {
 	ui.Say("Provisioning with Puppet Bolt...")
 
@@ -235,6 +236,7 @@ func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.C
 
 }
 
+// Cancel the provision operation
 func (p *Provisioner) Cancel() {
 	if p.done != nil {
 		close(p.done)
