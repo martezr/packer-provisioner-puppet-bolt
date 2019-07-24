@@ -2,6 +2,8 @@
 
 [![Build Status](https://img.shields.io/travis/martezr/packer-provisioner-puppet-bolt/master.svg)][travis]
 [![GoReportCard][report-badge]][report]
+[![GitHub release](https://img.shields.io/github/release/martezr/packer-provisioner-puppet-bolt.svg)](https://github.com/martezr/packer-provisioner-puppet-bolt/releases/)
+[![license](https://img.shields.io/github/license/martezr/packer-provisioner-puppet-bolt.svg)](https://github.com/martezr/packer-provisioner-puppet-bolt/blob/master/LICENSE)
 
 
 [travis]: https://travis-ci.org/martezr/packer-provisioner-puppet-bolt
@@ -121,3 +123,7 @@ Optional Parameters:
 - ssh_authorized_key_file (string) - The SSH public key of the Bolt ssh_user. The default behavior is to generate and use a onetime key. If this key is generated, the corresponding private key is passed to bolt with the --private-key-file option.
 
 - user (string) - The bolt_user to use. Defaults to the user running packer.
+
+## License
+
+The provisioner is available as open source under the terms of the [Apache 2.0](https://www.apache.org/licenses/LICENSE-2.0).
