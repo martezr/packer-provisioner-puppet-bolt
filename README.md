@@ -22,17 +22,32 @@ Note:: Any remote_user defined in tasks will be ignored. Packer will always conn
 Usage
 ======
 
-» Basic Example
-This is a fully functional template that will provision an image on DigitalOcean. Replace the mock api_token value with your own.
+» Linux vSphere Example
+This is a complete Linux reference template for VMware vSphere.
 
 ```json
 {
+  "variables": {
+    "vsphere_password": "",
+    "ssh_password": ""
+  },
   "builders": [
     {
-      "type": "digitalocean",
-      "api_token": "6a561151587389c7cf8faa2d83e94150a4202da0e2bad34dd2bf236018ffaeeb",
-      "image": "ubuntu-14-04-x64",
-      "region": "sfo1"
+      "type": "vsphere-clone",
+
+      "vcenter_server":      "10.0.0.205",
+      "username":            "administrator@vsphere.local",
+      "password":            "{{user `vsphere_password`}}",
+      "insecure_connection": "true",
+
+      "template": "centos7base",
+      "vm_name":  "alpine-clone",
+      "cluster": "GRT-Cluster",
+      "host": "10.0.0.246",
+
+      "communicator": "ssh",
+      "ssh_username": "root",
+      "ssh_password": "{{user `ssh_password`}}"
     }
   ],
   "provisioners": [
@@ -41,6 +56,46 @@ This is a fully functional template that will provision an image on DigitalOcean
       "user": "root",
       "bolt_plan":"boltdemo::consul_server",
       "bolt_module_path": "modules/"
+    }
+  ]
+}
+```
+
+» Windows vSphere Example
+This is a complete Windows reference template for VMware vSphere.
+
+```json
+{
+  "variables": {
+    "vsphere_password": "",
+    "winrm_password": ""
+  },
+  "builders": [
+    {
+      "type": "vsphere-clone",
+
+      "vcenter_server":      "10.0.0.205",
+      "username":            "administrator@vsphere.local",
+      "password":            "{{user `vsphere_password`}}",
+      "insecure_connection": "true",
+
+      "template": "grt2k16temp",
+      "vm_name":  "winboltpacker",
+      "cluster": "GRT-Cluster",
+      "host": "10.0.0.246",
+
+      "communicator": "winrm",
+      "winrm_port": "5985",
+      "winrm_insecure": true,
+      "winrm_username": "administrator",
+      "winrm_password": "{{user `winrm_password`}}"
+    }
+  ],
+  "provisioners": [
+    {
+      "type": "puppet-bolt",
+      "user": "administrator",
+      "bolt_task": "facts"
     }
   ]
 }
