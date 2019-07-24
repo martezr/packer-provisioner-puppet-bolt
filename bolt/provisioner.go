@@ -16,6 +16,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"os/user"
   "regexp"
 	"strconv"
 	"strings"
@@ -100,10 +101,23 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		p.config.Command = "bolt"
 	}
 
+  if p.config.BoltTask == "" && p.config.BoltPlan == "" {
+    errs = packer.MultiErrorAppend(errs, fmt.Errorf("A bolt task or bolt plan must be specified."))
+	}
+
 	if !p.config.SkipVersionCheck {
 		err = p.getVersion()
 		if err != nil {
 			errs = packer.MultiErrorAppend(errs, err)
+		}
+	}
+
+  if p.config.User == "" {
+		usr, err := user.Current()
+		if err != nil {
+			errs = packer.MultiErrorAppend(errs, err)
+		} else {
+			p.config.User = usr.Username
 		}
 	}
 
@@ -124,7 +138,7 @@ func (p *Provisioner) getVersion() error {
 			"Error running \"%s --version\": %s", p.config.Command, err.Error())
 	}
 
-	versionRe := regexp.MustCompile(`\w (\d+\.\d+[.\d+]*)`)
+	versionRe := regexp.MustCompile(`(\d+\.\d+[.\d+]*)`)
 	matches := versionRe.FindStringSubmatch(string(out))
 	if matches == nil {
 		return fmt.Errorf(
