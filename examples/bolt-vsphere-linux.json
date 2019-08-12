@@ -1,7 +1,7 @@
 {
   "variables": {
     "vsphere_password": "",
-    "winrm_password": ""
+    "ssh_password": ""
   },
   "builders": [
     {
@@ -12,23 +12,30 @@
       "password":            "{{user `vsphere_password`}}",
       "insecure_connection": "true",
 
-      "template": "grt2k16temp",
-      "vm_name":  "winboltpacker",
+      "template": "centos7base",
+      "vm_name":  "alpine-clone",
       "cluster": "GRT-Cluster",
       "host": "10.0.0.246",
 
-      "communicator": "winrm",
-      "winrm_port": "5985",
-      "winrm_insecure": true,
-      "winrm_username": "administrator",
-      "winrm_password": "{{user `winrm_password`}}"
+      "communicator": "ssh",
+      "ssh_username": "root",
+      "ssh_password": "{{user `ssh_password`}}"
     }
   ],
   "provisioners": [
     {
+      "type":"puppet-bolt",
+      "user":"root",
+      "bolt_task":"puppet_agent::install"
+    },
+    {
       "type": "puppet-bolt",
       "user": "root",
-      "bolt_task": "facts"
+      "bolt_task": "package",
+      "bolt_params": {
+        "name": "httpd", 
+        "action": "install"
+      }
     }
   ]
 }

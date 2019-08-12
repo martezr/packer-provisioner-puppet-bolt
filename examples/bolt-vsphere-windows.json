@@ -1,7 +1,7 @@
 {
   "variables": {
     "vsphere_password": "",
-    "ssh_password": ""
+    "winrm_password": ""
   },
   "builders": [
     {
@@ -9,23 +9,26 @@
 
       "vcenter_server":      "10.0.0.205",
       "username":            "administrator@vsphere.local",
-      "password":            "{{user `vsphere_password`}}",
+      "password":            "Greenrt0!23",
       "insecure_connection": "true",
 
-      "template": "centos7base",
-      "vm_name":  "alpine-clone",
+      "template": "2k16temp",
+      "vm_name":  "winboltpacker",
       "cluster": "GRT-Cluster",
       "host": "10.0.0.246",
 
-      "communicator": "ssh",
-      "ssh_username": "root",
-      "ssh_password": "{{user `ssh_password`}}"
+      "communicator": "winrm",
+      "winrm_host": "10.0.0.55",
+      "winrm_port": "5985",
+      "winrm_insecure": true,
+      "winrm_username": "administrator",
+      "winrm_password": "Greenrt0!23"
     }
   ],
   "provisioners": [
     {
       "type": "puppet-bolt",
-      "user": "root",
+      "user": "administrator",
       "bolt_task": "facts"
     }
   ]
