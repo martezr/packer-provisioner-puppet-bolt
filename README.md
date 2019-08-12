@@ -13,10 +13,6 @@ Packer Puppet Bolt Provisioner
 
 HashiCorp Packer plugin that provisions machines using [Puppet Bolt](https://puppet.com/products/bolt)
 
-```
-docker run --rm -ti -v $(pwd):/go/src/ golang /bin/bash
-```
-
 The bolt Packer provisioner runs Puppet Bolt tasks. It runs an SSH server, executes bolt task run, and marshals Bolt tasks through the SSH server to the machine being provisioned by Packer.
 
 Note:: Any remote_user defined in tasks will be ignored. Packer will always connect with the user given in the json config for this provisioner.
@@ -132,4 +128,20 @@ Optional Parameters:
 
 ## License
 
-The provisioner is available as open source under the terms of the [Apache 2.0](https://www.apache.org/licenses/LICENSE-2.0).
+|                |                                                  |
+| -------------- | ------------------------------------------------ |
+| **Author:**    | Martez Reed (<martez.reed@greenreedtech.com>)    |
+| **Copyright:** | Copyright (c) 2018-2019 Green Reed Technology    |
+| **License:**   | Apache License, Version 2.0                      |
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.

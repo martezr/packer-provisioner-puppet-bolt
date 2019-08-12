@@ -1,0 +1,21 @@
+{
+    "builders": [
+        {
+            "type": "vsphere-iso",
+            "vcenter_server": "grtvcenter01.grt.local",
+            "cluster": "GRT-Cluster",
+            "username": "administrator",
+            "password": "password",
+            "insecure_connection": true,
+            "CPUs": 2,
+            "RAM": 4096,
+            "vm_name": "winbolt",
+            "network_card": "vmxnet3",
+            "network": "VM Network",
+            "disk_size": 30720,
+            "communicator": "winrm",
+            "winrm_username": "administrator",
+            "guest_os_type": "windows9Server64Guest"
+        }
+    ]
+}

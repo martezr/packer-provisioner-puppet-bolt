@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -17,23 +18,23 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
-  "regexp"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"unicode"
 
-	"golang.org/x/crypto/ssh"
-
 	"github.com/hashicorp/packer/common"
 	"github.com/hashicorp/packer/common/adapter"
-  commonhelper "github.com/hashicorp/packer/helper/common"
+	commonhelper "github.com/hashicorp/packer/helper/common"
 	"github.com/hashicorp/packer/helper/config"
 	"github.com/hashicorp/packer/packer"
 	"github.com/hashicorp/packer/packer/tmp"
 	"github.com/hashicorp/packer/template/interpolate"
+	"golang.org/x/crypto/ssh"
 )
 
+// Config data passed from the template JSON
 type Config struct {
 	common.PackerConfig `mapstructure:",squash"`
 	ctx                 interpolate.Context
@@ -44,6 +45,10 @@ type Config struct {
 	// Extra options to pass to the bolt command
 	ExtraArguments []string `mapstructure:"extra_arguments"`
 
+	BoltEnvVars []string `mapstructure:"bolt_env_vars"`
+
+	BoltParams map[interface{}]interface{} `mapstructure:"bolt_params"`
+
 	// The bolt task to execute.
 	BoltTask string `mapstructure:"bolt_task"`
 
@@ -53,15 +58,18 @@ type Config struct {
 	// The bolt module path
 	BoltModulePath string `mapstructure:"bolt_module_path"`
 
-	// The optional inventory file
-	InventoryFile        string `mapstructure:"inventory_file"`
+	// The bolt inventory file
+	InventoryFile string `mapstructure:"inventory_file"`
+
 	LocalPort            int    `mapstructure:"local_port"`
 	SkipVersionCheck     bool   `mapstructure:"skip_version_check"`
 	User                 string `mapstructure:"user"`
 	SSHHostKeyFile       string `mapstructure:"ssh_host_key_file"`
 	SSHAuthorizedKeyFile string `mapstructure:"ssh_authorized_key_file"`
+	WinRMSSLVerify       bool   `mapstructure:"winrm_ssl_verify"`
 }
 
+// Provisioner data passed to the provision operation
 type Provisioner struct {
 	config         Config
 	adapter        *adapter.Adapter
@@ -70,10 +78,12 @@ type Provisioner struct {
 	boltMajVersion uint
 }
 
+// PassthroughTemplate data passed for the Windows WinRM configuration
 type PassthroughTemplate struct {
 	WinRMPassword string
 }
 
+// Prepare the config data for provisioning
 func (p *Provisioner) Prepare(raws ...interface{}) error {
 	p.done = make(chan struct{})
 
@@ -101,8 +111,22 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		p.config.Command = "bolt"
 	}
 
-  if p.config.BoltTask == "" && p.config.BoltPlan == "" {
-    errs = packer.MultiErrorAppend(errs, fmt.Errorf("A bolt task or bolt plan must be specified."))
+	// Validate that a bolt task or bolt plan is specified
+	if p.config.BoltTask == "" && p.config.BoltPlan == "" {
+		errs = packer.MultiErrorAppend(errs, fmt.Errorf("A bolt task or bolt plan must be specified"))
+	}
+
+	// Validate that both a bolt plan and task are not specified at the same time
+	if p.config.BoltTask != "" && p.config.BoltPlan != "" {
+		errs = packer.MultiErrorAppend(errs, fmt.Errorf("A bolt task and bolt plan cannot be specified at the same time"))
+	}
+
+	if len(p.config.BoltModulePath) > 0 {
+		err = validateModuleDirectoryConfig(p.config.BoltModulePath)
+		if err != nil {
+			log.Println(p.config.BoltModulePath, "does not exist")
+			errs = packer.MultiErrorAppend(errs, err)
+		}
 	}
 
 	if !p.config.SkipVersionCheck {
@@ -112,7 +136,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		}
 	}
 
-  if p.config.User == "" {
+	if p.config.User == "" {
 		usr, err := user.Current()
 		if err != nil {
 			errs = packer.MultiErrorAppend(errs, err)
@@ -122,7 +146,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	}
 
 	if p.config.User == "" {
-		errs = packer.MultiErrorAppend(errs, fmt.Errorf("user: could not determine current user from environment."))
+		errs = packer.MultiErrorAppend(errs, fmt.Errorf("user: could not determine current user from environment"))
 	}
 
 	if errs != nil && len(errs.Errors) > 0 {
@@ -151,7 +175,7 @@ func (p *Provisioner) getVersion() error {
 
 	majVer, err := strconv.ParseUint(strings.Split(version, ".")[0], 10, 0)
 	if err != nil {
-		return fmt.Errorf("Could not parse major version from \"%s\".", version)
+		return fmt.Errorf("Could not parse major version from \"%s\"", version)
 	}
 	p.boltMajVersion = uint(majVer)
 
@@ -264,12 +288,13 @@ func (p *Provisioner) Cancel() {
 }
 
 func (p *Provisioner) executeBolt(ui packer.Ui, comm packer.Communicator, privKeyFile string) error {
-	//	inventory := p.config.InventoryFile
+	inventory := p.config.InventoryFile
 	bolttask := p.config.BoltTask
 	boltplan := p.config.BoltPlan
 	boltmodulepath := p.config.BoltModulePath
+	boltparams := p.config.BoltParams
 
-	//	var envvars []string
+	var envvars []string
 	target := "ssh://127.0.0.1:" + strconv.Itoa(p.config.LocalPort)
 	var boltcommand string
 	if p.config.BoltTask != "" {
@@ -284,8 +309,23 @@ func (p *Provisioner) executeBolt(ui packer.Ui, comm packer.Communicator, privKe
 		args = append(args, boltplan)
 	}
 
+	paramData := convertParams(boltparams)
+	paramJSON, err := json.Marshal(paramData)
+	if err != nil {
+		ui.Say(fmt.Sprintf(err.Error()))
+	}
+	jsonStr := string(paramJSON)
+
+	ui.Say(fmt.Sprintf("Bolt Parameters: %s", jsonStr))
+
+	args = append(args, "--params", jsonStr)
+
 	if p.config.BoltModulePath != "" {
 		args = append(args, "--modulepath", boltmodulepath)
+	}
+
+	if p.config.InventoryFile != "" {
+		args = append(args, "--inventoryfile", inventory)
 	}
 
 	args = append(args, "--nodes", target)
@@ -307,16 +347,16 @@ func (p *Provisioner) executeBolt(ui packer.Ui, comm packer.Communicator, privKe
 	}
 
 	args = append(args, p.config.ExtraArguments...)
-	//	if len(p.config.BoltEnvVars) > 0 {
-	//		envvars = append(envvars, p.config.BoltEnvVars...)
-	//	}
+	if len(p.config.BoltEnvVars) > 0 {
+		envvars = append(envvars, p.config.BoltEnvVars...)
+	}
 
 	cmd := exec.Command(p.config.Command, args...)
 
 	cmd.Env = os.Environ()
-	//	if len(envvars) > 0 {
-	//		cmd.Env = append(cmd.Env, envvars...)
-	//	}
+	if len(envvars) > 0 {
+		cmd.Env = append(cmd.Env, envvars...)
+	}
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -354,10 +394,10 @@ func (p *Provisioner) executeBolt(ui packer.Ui, comm packer.Communicator, privKe
 	// remove winrm password from command, if it's been added
 	flattenedCmd := strings.Join(cmd.Args, " ")
 	sanitized := flattenedCmd
-	//	if len(getWinRMPassword(p.config.PackerBuildName)) > 0 {
-	//		sanitized = strings.Replace(sanitized,
-	//			getWinRMPassword(p.config.PackerBuildName), "*****", -1)
-	//	}
+	if len(getWinRMPassword(p.config.PackerBuildName)) > 0 {
+		sanitized = strings.Replace(sanitized,
+			getWinRMPassword(p.config.PackerBuildName), "*****", -1)
+	}
 	ui.Say(fmt.Sprintf("Executing Bolt: %s", sanitized))
 
 	if err := cmd.Start(); err != nil {
@@ -369,6 +409,29 @@ func (p *Provisioner) executeBolt(ui packer.Ui, comm packer.Communicator, privKe
 		return fmt.Errorf("Non-zero exit status: %s", err)
 	}
 
+	return nil
+}
+
+func convertParams(m map[interface{}]interface{}) map[string]interface{} {
+	res := map[string]interface{}{}
+	for k, v := range m {
+		switch v2 := v.(type) {
+		case map[interface{}]interface{}:
+			res[fmt.Sprint(k)] = convertParams(v2)
+		default:
+			res[fmt.Sprint(k)] = v
+		}
+	}
+	return res
+}
+
+func validateModuleDirectoryConfig(name string) error {
+	info, err := os.Stat(name)
+	if err != nil {
+		return fmt.Errorf("modulepath: %s is invalid: %s", name, err)
+	} else if !info.IsDir() {
+		return fmt.Errorf("modulepath: %s must point to a directory", name)
+	}
 	return nil
 }
 
