@@ -53,7 +53,10 @@ This is a complete Linux reference template for VMware vSphere.
       "type": "puppet-bolt",
       "user": "root",
       "bolt_plan":"boltdemo::consul_server",
-      "bolt_module_path": "modules/"
+      "bolt_module_path": "modules/",
+      "bolt_params": {
+        "version": "1.2.3"
+      }
     }
   ]
 }
@@ -115,6 +118,8 @@ Optional Parameters:
 ------
 
 - bolt_module_path (string) - The path that Bolt should look for modules.
+
+- bolt_params (json) - The parameters to pass the Bolt Task or Plan.
 
 - inventory_file (string) - The inventory file to use during provisioning. When unspecified, Packer will create a temporary inventory file and will use the host_alias.
 
