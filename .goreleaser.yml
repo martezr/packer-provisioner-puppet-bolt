@@ -1,0 +1,14 @@
+# Build customization
+builds:
+  - main: main.go
+binary: packer-provisioner-puppet-bolt
+goos:
+  - windows
+  - darwin
+  - linux
+goarch:
+  - amd64
+  - arm64
+# Archive customization
+archive:
+  format: zip
