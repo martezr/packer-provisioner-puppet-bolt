@@ -45,8 +45,10 @@ type Config struct {
 	// Extra options to pass to the bolt command
 	ExtraArguments []string `mapstructure:"extra_arguments"`
 
+	// Bolt environment variables
 	BoltEnvVars []string `mapstructure:"bolt_env_vars"`
 
+	// Bolt command parameters
 	BoltParams map[interface{}]interface{} `mapstructure:"bolt_params"`
 
 	// The bolt task to execute.
@@ -315,8 +317,6 @@ func (p *Provisioner) executeBolt(ui packer.Ui, comm packer.Communicator, privKe
 		ui.Say(fmt.Sprintf(err.Error()))
 	}
 	jsonStr := string(paramJSON)
-
-	ui.Say(fmt.Sprintf("Bolt Parameters: %s", jsonStr))
 
 	args = append(args, "--params", jsonStr)
 
