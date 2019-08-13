@@ -6,10 +6,9 @@ go:
 env:
   - GO111MODULE=on
 
-before_install:
-  - go get github.com/mattn/goveralls
-script:
-  - "make test"
+install: true
+
+script: go test -v -mod=vendor ./...
 
 after_success:
 - test -n "$TRAVIS_TAG" && curl -sL https://git.io/goreleaser | bash
