@@ -1,14 +1,8 @@
 language: go
-
 go:
   - 1.12.x
-
-env:
-  - GO111MODULE=on
-
+env: GO111MODULE=on GOFLAGS='-mod vendor'
 install: true
-
-script: go test -v -mod=vendor ./...
-
+script: go test -v ./...
 after_success:
 - test -n "$TRAVIS_TAG" && curl -sL https://git.io/goreleaser | bash
