@@ -13,7 +13,6 @@
 
 packer-provisioner-*
 packer-builder-*
-packer
 *.log
 tmp*
 assets_vfsdata.go
