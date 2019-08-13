@@ -9,7 +9,6 @@ env:
 before_install:
   - go get github.com/mattn/goveralls
 script:
-  - $HOME/gopath/bin/goveralls -v -service=travis-ci
   - "make test"
 
 after_success:
