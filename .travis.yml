@@ -2,7 +2,12 @@ language: go
 
 go:
   - 1.12.x
+
 env:
   - GO111MODULE=on
 
-script: "make test"
+before_install:
+  - go get github.com/mattn/goveralls
+script:
+  - $HOME/gopath/bin/goveralls -v -service=travis-ci
+  - "make test"
