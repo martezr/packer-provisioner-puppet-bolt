@@ -1,7 +1,8 @@
 language: go
 go:
   - 1.12.x
-env: GO111MODULE=on GOFLAGS='-mod vendor'
+env: 
+  - GO111MODULE=on
 install: true
 script: go test -v ./...
 after_success:
