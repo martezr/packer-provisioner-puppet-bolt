@@ -3,7 +3,10 @@ builds:
   - CGO_ENABLED=0
   main: main.go
   binary: packer-provisioner-puppet-bolt
-archive:
+archives:
+  format_overrides:
+    - goos: windows
+      format: zip
   replacements:
     darwin: Darwin
     linux: Linux
