@@ -3,6 +3,17 @@ builds:
   - CGO_ENABLED=0
   main: main.go
   binary: packer-provisioner-puppet-bolt
+  goarch:
+    - amd64
+    - arm
+    - arm64
+    - 386
+  goos:
+    - freebsd
+    - windows
+    - linux
+    - darwin
+
 archives:
   format_overrides:
     - goos: windows
