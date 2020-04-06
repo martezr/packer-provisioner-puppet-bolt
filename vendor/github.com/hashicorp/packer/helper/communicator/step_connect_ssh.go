@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"golang.org/x/crypto/ssh/terminal"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -36,17 +38,17 @@ func (s *StepConnectSSH) Run(ctx context.Context, state multistep.StateBag) mult
 	var comm packer.Communicator
 	var err error
 
-	cancel := make(chan struct{})
+	subCtx, cancel := context.WithCancel(ctx)
 	waitDone := make(chan bool, 1)
 	go func() {
 		ui.Say("Waiting for SSH to become available...")
-		comm, err = s.waitForSSH(state, cancel)
+		comm, err = s.waitForSSH(state, subCtx)
+		cancel() // just to make 'possible context leak' analysis happy
 		waitDone <- true
 	}()
 
 	log.Printf("[INFO] Waiting for SSH, up to timeout: %s", s.Config.SSHTimeout)
 	timeout := time.After(s.Config.SSHTimeout)
-WaitLoop:
 	for {
 		// Wait for either SSH to become available, a timeout to occur,
 		// or an interrupt to come through.
@@ -60,31 +62,28 @@ WaitLoop:
 
 			ui.Say("Connected to SSH!")
 			state.Put("communicator", comm)
-			break WaitLoop
+			return multistep.ActionContinue
 		case <-timeout:
 			err := fmt.Errorf("Timeout waiting for SSH.")
 			state.Put("error", err)
 			ui.Error(err.Error())
-			close(cancel)
+			cancel()
+			return multistep.ActionHalt
+		case <-ctx.Done():
+			// The step sequence was cancelled, so cancel waiting for SSH
+			// and just start the halting process.
+			cancel()
+			log.Println("[WARN] Interrupt detected, quitting waiting for SSH.")
 			return multistep.ActionHalt
 		case <-time.After(1 * time.Second):
-			if _, ok := state.GetOk(multistep.StateCancelled); ok {
-				// The step sequence was cancelled, so cancel waiting for SSH
-				// and just start the halting process.
-				close(cancel)
-				log.Println("[WARN] Interrupt detected, quitting waiting for SSH.")
-				return multistep.ActionHalt
-			}
 		}
 	}
-
-	return multistep.ActionContinue
 }
 
 func (s *StepConnectSSH) Cleanup(multistep.StateBag) {
 }
 
-func (s *StepConnectSSH) waitForSSH(state multistep.StateBag, cancel <-chan struct{}) (packer.Communicator, error) {
+func (s *StepConnectSSH) waitForSSH(state multistep.StateBag, ctx context.Context) (packer.Communicator, error) {
 	// Determine if we're using a bastion host, and if so, retrieve
 	// that configuration. This configuration doesn't change so we
 	// do this one before entering the retry loop.
@@ -109,8 +108,8 @@ func (s *StepConnectSSH) waitForSSH(state multistep.StateBag, cancel <-chan stru
 		pAddr = fmt.Sprintf("%s:%d", s.Config.SSHProxyHost, s.Config.SSHProxyPort)
 		if s.Config.SSHProxyUsername != "" {
 			pAuth = new(proxy.Auth)
-			pAuth.User = s.Config.SSHBastionUsername
-			pAuth.Password = s.Config.SSHBastionPassword
+			pAuth.User = s.Config.SSHProxyUsername
+			pAuth.Password = s.Config.SSHProxyPassword
 		}
 
 	}
@@ -123,7 +122,7 @@ func (s *StepConnectSSH) waitForSSH(state multistep.StateBag, cancel <-chan stru
 		// Don't check for cancel or wait on first iteration
 		if !first {
 			select {
-			case <-cancel:
+			case <-ctx.Done():
 				log.Println("[DEBUG] SSH wait cancelled. Exiting loop.")
 				return nil, errors.New("SSH wait cancelled")
 			case <-time.After(5 * time.Second):
@@ -137,6 +136,8 @@ func (s *StepConnectSSH) waitForSSH(state multistep.StateBag, cancel <-chan stru
 			log.Printf("[DEBUG] Error getting SSH address: %s", err)
 			continue
 		}
+		// store host and port in config so we can access them from provisioners
+		s.Config.SSHHost = host
 		port := s.Config.SSHPort
 		if s.SSHPort != nil {
 			port, err = s.SSHPort(state)
@@ -144,7 +145,9 @@ func (s *StepConnectSSH) waitForSSH(state multistep.StateBag, cancel <-chan stru
 				log.Printf("[DEBUG] Error getting SSH port: %s", err)
 				continue
 			}
+			s.Config.SSHPort = port
 		}
+		state.Put("communicator_config", s.Config)
 
 		// Retrieve the SSH configuration
 		sshConfig, err := s.SSHConfig(state)
@@ -175,6 +178,25 @@ func (s *StepConnectSSH) waitForSSH(state multistep.StateBag, cancel <-chan stru
 		}
 		nc.Close()
 
+		// Parse out all the requested Port Tunnels that will go over our SSH connection
+		var tunnels []ssh.TunnelSpec
+		for _, v := range s.Config.SSHLocalTunnels {
+			t, err := helperssh.ParseTunnelArgument(v, ssh.LocalTunnel)
+			if err != nil {
+				return nil, fmt.Errorf(
+					"Error parsing port forwarding: %s", err)
+			}
+			tunnels = append(tunnels, t)
+		}
+		for _, v := range s.Config.SSHRemoteTunnels {
+			t, err := helperssh.ParseTunnelArgument(v, ssh.RemoteTunnel)
+			if err != nil {
+				return nil, fmt.Errorf(
+					"Error parsing port forwarding: %s", err)
+			}
+			tunnels = append(tunnels, t)
+		}
+
 		// Then we attempt to connect via SSH
 		config := &ssh.Config{
 			Connection:             connFunc,
@@ -184,10 +206,10 @@ func (s *StepConnectSSH) waitForSSH(state multistep.StateBag, cancel <-chan stru
 			UseSftp:                s.Config.SSHFileTransferMethod == "sftp",
 			KeepAliveInterval:      s.Config.SSHKeepAliveInterval,
 			Timeout:                s.Config.SSHReadWriteTimeout,
+			Tunnels:                tunnels,
 		}
 
 		log.Printf("[INFO] Attempting SSH connection to %s...", address)
-		log.Printf("[DEBUG] Config to %#v...", config)
 		comm, err = ssh.New(address, config)
 		if err != nil {
 			log.Printf("[DEBUG] SSH handshake err: %s", err)
@@ -198,6 +220,12 @@ func (s *StepConnectSSH) waitForSSH(state multistep.StateBag, cancel <-chan stru
 			if strings.Contains(err.Error(), "authenticate") {
 				log.Printf(
 					"[DEBUG] Detected authentication error. Increasing handshake attempts.")
+				err = fmt.Errorf("Packer experienced an authentication error "+
+					"when trying to connect via SSH. This can happen if your "+
+					"username/password are wrong. You may want to double-check"+
+					" your credentials as part of your debugging process. "+
+					"original error: %s",
+					err)
 				handshakeAttempts += 1
 			}
 
@@ -219,6 +247,22 @@ func (s *StepConnectSSH) waitForSSH(state multistep.StateBag, cancel <-chan stru
 
 func sshBastionConfig(config *Config) (*gossh.ClientConfig, error) {
 	auth := make([]gossh.AuthMethod, 0, 2)
+
+	if config.SSHBastionInteractive {
+		var c io.ReadWriteCloser
+		if terminal.IsTerminal(int(os.Stdin.Fd())) {
+			c = os.Stdin
+		} else {
+			tty, err := os.Open("/dev/tty")
+			if err != nil {
+				return nil, err
+			}
+			defer tty.Close()
+			c = tty
+		}
+		auth = append(auth, gossh.KeyboardInteractive(ssh.KeyboardInteractive(c)))
+	}
+
 	if config.SSHBastionPassword != "" {
 		auth = append(auth,
 			gossh.Password(config.SSHBastionPassword),

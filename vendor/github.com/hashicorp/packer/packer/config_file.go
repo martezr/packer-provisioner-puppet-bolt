@@ -24,12 +24,10 @@ func ConfigDir() (string, error) {
 func homeDir() (string, error) {
 	// Prefer $HOME over user.Current due to glibc bug: golang.org/issue/13470
 	if home := os.Getenv("HOME"); home != "" {
-		log.Printf("Detected home directory from env var: %s", home)
 		return home, nil
 	}
 
 	if home := os.Getenv("APPDATA"); home != "" {
-		log.Printf("Detected home directory from env var: %s", home)
 		return home, nil
 	}
 
@@ -52,18 +50,31 @@ func homeDir() (string, error) {
 }
 
 func configFile() (string, error) {
-	dir, err := homeDir()
-	if err != nil {
-		return "", err
+	var dir string
+	if cd := os.Getenv("PACKER_CONFIG_DIR"); cd != "" {
+		log.Printf("Detected config directory from env var: %s", cd)
+		dir = cd
+	} else {
+		homedir, err := homeDir()
+		if err != nil {
+			return "", err
+		}
+		dir = homedir
 	}
-
 	return filepath.Join(dir, defaultConfigFile), nil
 }
 
 func configDir() (string, error) {
-	dir, err := homeDir()
-	if err != nil {
-		return "", err
+	var dir string
+	if cd := os.Getenv("PACKER_CONFIG_DIR"); cd != "" {
+		log.Printf("Detected config directory from env var: %s", cd)
+		dir = cd
+	} else {
+		homedir, err := homeDir()
+		if err != nil {
+			return "", err
+		}
+		dir = homedir
 	}
 
 	return filepath.Join(dir, defaultConfigDir), nil

@@ -15,7 +15,7 @@ import (
 	"time"
 	"unicode"
 
-	getter "github.com/hashicorp/go-getter"
+	getter "github.com/hashicorp/go-getter/v2"
 )
 
 var ErrInterrupted = errors.New("interrupted")
@@ -335,15 +335,15 @@ func (u *MachineReadableUi) Machine(category string, args ...string) {
 
 	// Prepare the args
 	for i, v := range args {
-		args[i] = strings.Replace(v, ",", "%!(PACKER_COMMA)", -1)
-		args[i] = strings.Replace(args[i], "\r", "\\r", -1)
-		args[i] = strings.Replace(args[i], "\n", "\\n", -1)
 		// Use LogSecretFilter to scrub out sensitive variables
 		for s := range LogSecretFilter.s {
 			if s != "" {
 				args[i] = strings.Replace(args[i], s, "<sensitive>", -1)
 			}
 		}
+		args[i] = strings.Replace(v, ",", "%!(PACKER_COMMA)", -1)
+		args[i] = strings.Replace(args[i], "\r", "\\r", -1)
+		args[i] = strings.Replace(args[i], "\n", "\\n", -1)
 	}
 	argsString := strings.Join(args, ",")
 

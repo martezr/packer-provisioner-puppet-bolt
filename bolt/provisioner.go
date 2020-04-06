@@ -1,3 +1,4 @@
+//go:generate mapstructure-to-hcl2 -type Config
 package bolt
 
 import (
@@ -24,6 +25,7 @@ import (
 	"sync"
 	"unicode"
 
+	"github.com/hashicorp/hcl/v2/hcldec"
 	"github.com/hashicorp/packer/common"
 	"github.com/hashicorp/packer/common/adapter"
 	commonhelper "github.com/hashicorp/packer/helper/common"
@@ -83,6 +85,10 @@ type Provisioner struct {
 // PassthroughTemplate data passed for the Windows WinRM configuration
 type PassthroughTemplate struct {
 	WinRMPassword string
+}
+
+func (p *Provisioner) ConfigSpec() hcldec.ObjectSpec {
+	return p.config.FlatMapstructure().HCL2Spec()
 }
 
 // Prepare the config data for provisioning
@@ -185,7 +191,7 @@ func (p *Provisioner) getVersion() error {
 }
 
 // Provision using the Puppet Bolt provisioner
-func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.Communicator) error {
+func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.Communicator, generatedData map[string]interface{}) error {
 	ui.Say("Provisioning with Puppet Bolt...")
 
 	k, err := newUserKey(p.config.SSHAuthorizedKeyFile)
