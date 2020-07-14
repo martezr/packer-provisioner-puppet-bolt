@@ -275,8 +275,8 @@ func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.C
 
 	hostSigner, err := newSigner(p.config.SSHHostKeyFile)
 	if err != nil {
-    return fmt.Errorf("error creating host signer: %s", err)
-  }
+		return fmt.Errorf("error creating host signer: %s", err)
+	}
 
 	// Remove the private key file
 	if len(k.privKeyFile) > 0 {
@@ -295,7 +295,7 @@ func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.C
 
 			return nil, nil
 		},
-    IsUserAuthority: func(k ssh.PublicKey) bool { return true },
+    	IsUserAuthority: func(k ssh.PublicKey) bool { return true },
 	}
 
 	config := &ssh.ServerConfig{
@@ -406,9 +406,9 @@ func (p *Provisioner) executeBolt(ui packer.Ui, comm packer.Communicator, privKe
 	} else if p.config.Backend == "winrm" {
 		if p.config.InventoryFile == "" {
 			err := p.createInventoryFile()
-	    if err != nil {
-	      return err
-	    }
+		    if err != nil {
+		      return err
+		    }
 
 			defer os.Remove(p.config.InventoryFile)
 		}
@@ -602,7 +602,7 @@ func newUserKey(pubKeyFile string) (*userKey, error) {
 		return nil, errors.New("Failed to extract public key from generated key pair")
 	}
 
-	// To support Inspec calling back to us we need to write
+	// To support Bolt calling back to us we need to write
 	// this file down
 	privateKeyDer := x509.MarshalPKCS1PrivateKey(key)
 	privateKeyBlock := pem.Block{
