@@ -1,9 +1,13 @@
 package bolt
 
 import (
+	"crypto/rand"
+	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"path"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/packer/packer"
@@ -77,6 +81,88 @@ func TestProvisionerPrepare_Defaults(t *testing.T) {
 	}
 }
 
+func TestProvisionerPrepare_HostKeyFile(t *testing.T) {
+	var p Provisioner
+	config := testConfig(t)
+	defer os.Remove(config["command"].(string))
+
+	publickey_file, err := ioutil.TempFile("", "publickey")
+	if err != nil {
+		t.Fatalf("err: %s", err)
+	}
+	defer os.Remove(publickey_file.Name())
+
+	filename := make([]byte, 10)
+	n, err := io.ReadFull(rand.Reader, filename)
+	if n != len(filename) || err != nil {
+		t.Fatal("could not create random file name")
+	}
+
+	config["ssh_host_key_file"] = fmt.Sprintf("%x", filename)
+	config["ssh_authorized_key_file"] = publickey_file.Name()
+
+	err = p.Prepare(config)
+	if err == nil {
+		t.Fatal("should error if ssh_host_key_file does not exist")
+	}
+
+	hostkey_file, err := ioutil.TempFile("", "hostkey")
+	if err != nil {
+		t.Fatalf("err: %s", err)
+	}
+	defer os.Remove(hostkey_file.Name())
+
+	config["ssh_host_key_file"] = hostkey_file.Name()
+	config["local_port"] = 22222
+	config["bolt_task"] = "facts"
+	config["user"] = "root"
+	err = p.Prepare(config)
+	if err != nil {
+		t.Fatalf("err: %s", err)
+	}
+}
+
+func TestProvisionerPrepare_AuthorizedKeyFiles(t *testing.T) {
+	var p Provisioner
+	config := testConfig(t)
+	defer os.Remove(config["command"].(string))
+
+	hostkey_file, err := ioutil.TempFile("", "hostkey")
+	if err != nil {
+		t.Fatalf("err: %s", err)
+	}
+	defer os.Remove(hostkey_file.Name())
+
+	filename := make([]byte, 10)
+	n, err := io.ReadFull(rand.Reader, filename)
+	if n != len(filename) || err != nil {
+		t.Fatal("could not create random file name")
+	}
+
+	config["ssh_host_key_file"] = hostkey_file.Name()
+	config["ssh_authorized_key_file"] = fmt.Sprintf("%x", filename)
+
+	err = p.Prepare(config)
+	if err == nil {
+		t.Errorf("should error if ssh_authorized_key_file does not exist")
+	}
+
+	publickey_file, err := ioutil.TempFile("", "publickey")
+	if err != nil {
+		t.Fatalf("err: %s", err)
+	}
+	defer os.Remove(publickey_file.Name())
+
+	config["ssh_authorized_key_file"] = publickey_file.Name()
+	config["local_port"] = 22222
+	config["bolt_task"] = "facts"
+	config["user"] = "root"
+	err = p.Prepare(config)
+	if err != nil {
+		t.Errorf("err: %s", err)
+	}
+}
+
 func TestProvisionerPrepare_LocalPort(t *testing.T) {
 	var p Provisioner
 	config := testConfig(t)
@@ -106,6 +192,47 @@ func TestProvisionerPrepare_LocalPort(t *testing.T) {
 	config["local_port"] = 22222
 	config["bolt_task"] = "facts"
 	config["user"] = "root"
+	err = p.Prepare(config)
+	if err != nil {
+		t.Fatalf("err: %s", err)
+	}
+}
+
+func TestProvisionerPrepare_InventoryDirectory(t *testing.T) {
+	var p Provisioner
+	config := testConfig(t)
+	defer os.Remove(config["command"].(string))
+
+	hostkey_file, err := ioutil.TempFile("", "hostkey")
+	if err != nil {
+		t.Fatalf("err: %s", err)
+	}
+	defer os.Remove(hostkey_file.Name())
+
+	publickey_file, err := ioutil.TempFile("", "publickey")
+	if err != nil {
+		t.Fatalf("err: %s", err)
+	}
+	defer os.Remove(publickey_file.Name())
+
+	config["ssh_host_key_file"] = hostkey_file.Name()
+	config["ssh_authorized_key_file"] = publickey_file.Name()
+	config["user"] = "root"
+	config["bolt_task"] = "facts"
+
+	config["inventory_directory"] = "doesnotexist"
+	err = p.Prepare(config)
+	if err == nil {
+		t.Errorf("should error if inventory_directory does not exist")
+	}
+
+	inventoryDirectory, err := ioutil.TempDir("", "some_inventory_dir")
+	if err != nil {
+		t.Fatalf("err: %s", err)
+	}
+	defer os.Remove(inventoryDirectory)
+
+	config["inventory_directory"] = inventoryDirectory
 	err = p.Prepare(config)
 	if err != nil {
 		t.Fatalf("err: %s", err)
@@ -142,5 +269,61 @@ func TestProvisionerPrepare_BoltTask(t *testing.T) {
 	err = p.Prepare(config)
 	if err != nil {
 		t.Fatalf("err: %s", err)
+	}
+}
+
+func TestBoltGetVersion(t *testing.T) {
+	if os.Getenv("PACKER_ACC") == "" {
+		t.Skip("This test is only run with PACKER_ACC=1 and it requires InSpec to be installed")
+	}
+
+	var p Provisioner
+	p.config.Command = "bolt"
+	err := p.getVersion()
+	if err != nil {
+		t.Fatalf("err: %s", err)
+	}
+}
+
+func TestBoltGetVersionError(t *testing.T) {
+	var p Provisioner
+	p.config.Command = "./test-fixtures/exit1"
+	err := p.getVersion()
+	if err == nil {
+		t.Fatal("Should return error")
+	}
+	if !strings.Contains(err.Error(), "./test-fixtures/exit1 --version") {
+		t.Fatal("Error message should include command name")
+	}
+}
+
+func TestCreateInventoryFile(t *testing.T) {
+	var p Provisioner
+
+	expected_file := `---
+config:
+  winrm:
+    user:
+      _plugin: env_var
+      var: BOLT_USER
+    password:
+      _plugin: env_var
+      var: BOLT_PASSWORD
+`
+	err := p.createInventoryFile()
+	if err != nil {
+		t.Fatalf("error creating config using localhost and local port proxy")
+	}
+	if p.config.InventoryFile == "" {
+		t.Fatalf("No inventory file was created")
+	}
+	defer os.Remove(p.config.InventoryFile)
+	f, err := ioutil.ReadFile(p.config.InventoryFile)
+	if err != nil {
+		t.Fatalf("couldn't read created inventoryfile: %s", err)
+	}
+
+	if fmt.Sprintf("%s", f) != expected_file {
+		t.Fatalf("File didn't match expected:\n\n expected: \n%s\n; recieved: \n%s\n", expected_file, f)
 	}
 }

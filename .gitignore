@@ -16,3 +16,6 @@ packer-builder-*
 *.log
 assets_vfsdata.go
 .idea/
+
+# ignore MAC Directory file
+.DS_Store
