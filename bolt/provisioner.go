@@ -3,37 +3,37 @@
 package bolt
 
 import (
-  "bufio"
-  "bytes"
-  "context"
-  "crypto/rand"
-  "crypto/rsa"
-  "crypto/x509"
-  "encoding/json"
-  "encoding/pem"
-  "errors"
-  "fmt"
-  "io"
-  "io/ioutil"
-  "log"
-  "net"
-  "os"
-  "os/exec"
-  "os/user"
-  "regexp"
-  "strconv"
-  "strings"
-  "sync"
-  "unicode"
+	"bufio"
+	"bytes"
+	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/json"
+	"encoding/pem"
+	"errors"
+	"fmt"
+	"io"
+	"io/ioutil"
+	"log"
+	"net"
+	"os"
+	"os/exec"
+	"os/user"
+	"regexp"
+	"strconv"
+	"strings"
+	"sync"
+	"unicode"
 
-  "golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh"
 
-  "github.com/hashicorp/hcl/v2/hcldec"
-  "github.com/hashicorp/packer/common"
-  "github.com/hashicorp/packer/common/adapter"
-  "github.com/hashicorp/packer/helper/config"
-  "github.com/hashicorp/packer/packer"
-  "github.com/hashicorp/packer/template/interpolate"
+	"github.com/hashicorp/hcl/v2/hcldec"
+	"github.com/hashicorp/packer/common"
+	"github.com/hashicorp/packer/common/adapter"
+	"github.com/hashicorp/packer/helper/config"
+	"github.com/hashicorp/packer/packer"
+	"github.com/hashicorp/packer/template/interpolate"
 )
 
 // Config data passed from the template JSON
@@ -77,14 +77,14 @@ type Config struct {
 	// Connection Timeout value
 	ConnectTimeout int `mapstructure:"connect_timeout"`
 
-  // The directory in which to place the
-  //  temporary generated Bolt inventory file. By default, this is the
-  //  system-specific temporary file location. The fully-qualified name of this
-  //  temporary file will be passed to the `-i` argument of the `Bolt` command
-  //  when this provisioner runs Bolt. Specify this if you have an existing
-  //  inventory directory with `host_vars` `group_vars` that you would like to
-  //  use in the playbook that this provisioner will run.
-  InventoryDirectory string `mapstructure:"inventory_directory"`
+	// The directory in which to place the
+	//  temporary generated Bolt inventory file. By default, this is the
+	//  system-specific temporary file location. The fully-qualified name of this
+	//  temporary file will be passed to the `-i` argument of the `Bolt` command
+	//  when this provisioner runs Bolt. Specify this if you have an existing
+	//  inventory directory with `host_vars` `group_vars` that you would like to
+	//  use in the playbook that this provisioner will run.
+	InventoryDirectory string `mapstructure:"inventory_directory"`
 
 	LocalPort            int    `mapstructure:"local_port"`
 	SkipVersionCheck     bool   `mapstructure:"skip_version_check"`
@@ -126,20 +126,20 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	var errs *packer.MultiError
 
 	// Check that the authorized key file exists
-  if len(p.config.SSHAuthorizedKeyFile) > 0 {
-    err = validateFileConfig(p.config.SSHAuthorizedKeyFile, "ssh_authorized_key_file", true)
-    if err != nil {
-      log.Println(p.config.SSHAuthorizedKeyFile, "does not exist")
-      errs = packer.MultiErrorAppend(errs, err)
-    }
-  }
-  if len(p.config.SSHHostKeyFile) > 0 {
-    err = validateFileConfig(p.config.SSHHostKeyFile, "ssh_host_key_file", true)
-    if err != nil {
-      log.Println(p.config.SSHHostKeyFile, "does not exist")
-      errs = packer.MultiErrorAppend(errs, err)
-    }
-  }
+	if len(p.config.SSHAuthorizedKeyFile) > 0 {
+		err = validateFileConfig(p.config.SSHAuthorizedKeyFile, "ssh_authorized_key_file", true)
+		if err != nil {
+			log.Println(p.config.SSHAuthorizedKeyFile, "does not exist")
+			errs = packer.MultiErrorAppend(errs, err)
+		}
+	}
+	if len(p.config.SSHHostKeyFile) > 0 {
+		err = validateFileConfig(p.config.SSHHostKeyFile, "ssh_host_key_file", true)
+		if err != nil {
+			log.Println(p.config.SSHHostKeyFile, "does not exist")
+			errs = packer.MultiErrorAppend(errs, err)
+		}
+	}
 
 	// Defaults
 	if p.config.Command == "" {
@@ -172,8 +172,8 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	}
 
 	if p.config.Host == "" {
-    p.config.Host = "127.0.0.1"
-  }
+		p.config.Host = "127.0.0.1"
+	}
 
 	if p.config.User == "" {
 		usr, err := user.Current()
@@ -188,17 +188,17 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		errs = packer.MultiErrorAppend(errs, fmt.Errorf("user: could not determine current user from environment"))
 	}
 
-  if p.config.LocalPort > 65535 {
-    errs = packer.MultiErrorAppend(errs, fmt.Errorf("local_port: %d must be a valid port", p.config.LocalPort))
-  }
+	if p.config.LocalPort > 65535 {
+		errs = packer.MultiErrorAppend(errs, fmt.Errorf("local_port: %d must be a valid port", p.config.LocalPort))
+	}
 
-  if len(p.config.InventoryDirectory) > 0 {
-    err = validateDirectoryConfig(p.config.InventoryDirectory)
-    if err != nil {
-      log.Println(p.config.InventoryDirectory, "does not exist")
-      errs = packer.MultiErrorAppend(errs, err)
-    }
-  }
+	if len(p.config.InventoryDirectory) > 0 {
+		err = validateDirectoryConfig(p.config.InventoryDirectory)
+		if err != nil {
+			log.Println(p.config.InventoryDirectory, "does not exist")
+			errs = packer.MultiErrorAppend(errs, err)
+		}
+	}
 
 	if errs != nil && len(errs.Errors) > 0 {
 		return errs
@@ -236,21 +236,21 @@ func (p *Provisioner) getVersion() error {
 // Provision using the Puppet Bolt provisioner
 func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.Communicator, generatedData map[string]interface{}) error {
 	ui.Say("Provisioning with Puppet Bolt...")
-  p.config.ctx.Data = generatedData
+	p.config.ctx.Data = generatedData
 
-  if p.config.Backend == "" {
-  	p.config.Backend = generatedData["ConnType"].(string)
-  }
+	if p.config.Backend == "" {
+		p.config.Backend = generatedData["ConnType"].(string)
+	}
 
-  userp, err := interpolate.Render(p.config.User, &p.config.ctx)
-  if err != nil {
-    return fmt.Errorf("Could not interpolate bolt user: %s", err)
-  }
+	userp, err := interpolate.Render(p.config.User, &p.config.ctx)
+	if err != nil {
+		return fmt.Errorf("Could not interpolate bolt user: %s", err)
+	}
 
-  host, err := interpolate.Render(p.config.Host, &p.config.ctx)
-  if err != nil {
-    return fmt.Errorf("Could not interpolate bolt host: %s", err)
-  }
+	host, err := interpolate.Render(p.config.Host, &p.config.ctx)
+	if err != nil {
+		return fmt.Errorf("Could not interpolate bolt host: %s", err)
+	}
 
  	if p.config.Backend == "winrm" {
 		host = generatedData["Host"].(string)
@@ -265,8 +265,8 @@ func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.C
 		p.config.LocalPort = local_port
 	}
 
-  p.config.User = userp
-  p.config.Host = host
+	p.config.User = userp
+	p.config.Host = host
 
 	k, err := newUserKey(p.config.SSHAuthorizedKeyFile)
 	if err != nil {
@@ -509,29 +509,29 @@ config:
 `
 
 func (p *Provisioner) createInventoryFile() error {
-  log.Printf("Creating inventory file for Bolt WinRM run...")
-  tf, err := ioutil.TempFile(p.config.InventoryDirectory, "packer-provisioner-bolt.*.yaml")
-  if err != nil {
-    return fmt.Errorf("failed to create temp file for generated key")
-  }
+	log.Printf("Creating inventory file for Bolt WinRM run...")
+	tf, err := ioutil.TempFile(p.config.InventoryDirectory, "packer-provisioner-bolt.*.yaml")
+	if err != nil {
+		return fmt.Errorf("failed to create temp file for generated key")
+	}
 
-  w := bufio.NewWriter(tf)
+	w := bufio.NewWriter(tf)
 	w.WriteString(WinRMInventory)
 
-  if err := w.Flush(); err != nil {
-    tf.Close()
-  	os.Remove(tf.Name())
-    return fmt.Errorf("Error preparing packer attributes file: %s", err)
-  }
+	if err := w.Flush(); err != nil {
+	tf.Close()
+		os.Remove(tf.Name())
+		return fmt.Errorf("Error preparing packer attributes file: %s", err)
+	}
 
-  err = tf.Close()
-  if err != nil {
-    return fmt.Errorf("failed to write private key to temp file")
-  }
+	err = tf.Close()
+	if err != nil {
+		return fmt.Errorf("failed to write private key to temp file")
+	}
 
-  p.config.InventoryFile = tf.Name()
+	p.config.InventoryFile = tf.Name()
 
-  return nil
+	return nil
 }
 
 func convertParams(m map[interface{}]interface{}) map[string]interface{} {
@@ -548,18 +548,18 @@ func convertParams(m map[interface{}]interface{}) map[string]interface{} {
 }
 
 func validateFileConfig(name string, config string, req bool) error {
-  if req {
-    if name == "" {
-      return fmt.Errorf("%s must be specified.", config)
-    }
-  }
-  info, err := os.Stat(name)
-  if err != nil {
-    return fmt.Errorf("%s: %s is invalid: %s", config, name, err)
-  } else if info.IsDir() {
-    return fmt.Errorf("%s: %s must point to a file", config, name)
-  }
-  return nil
+	if req {
+		if name == "" {
+			return fmt.Errorf("%s must be specified.", config)
+		}
+	}
+	info, err := os.Stat(name)
+	if err != nil {
+		return fmt.Errorf("%s: %s is invalid: %s", config, name, err)
+	} else if info.IsDir() {
+		return fmt.Errorf("%s: %s must point to a file", config, name)
+	}
+	return nil
 }
 
 
@@ -579,53 +579,53 @@ type userKey struct {
 }
 
 func newUserKey(pubKeyFile string) (*userKey, error) {
-  userKey := new(userKey)
-  if len(pubKeyFile) > 0 {
-    pubKeyBytes, err := ioutil.ReadFile(pubKeyFile)
-    if err != nil {
-      return nil, errors.New("Failed to read public key")
-    }
-    userKey.PublicKey, _, _, _, err = ssh.ParseAuthorizedKey(pubKeyBytes)
-    if err != nil {
-      return nil, errors.New("Failed to parse authorized key")
-    }
+	userKey := new(userKey)
+	if len(pubKeyFile) > 0 {
+		pubKeyBytes, err := ioutil.ReadFile(pubKeyFile)
+		if err != nil {
+			return nil, errors.New("Failed to read public key")
+		}
+		userKey.PublicKey, _, _, _, err = ssh.ParseAuthorizedKey(pubKeyBytes)
+		if err != nil {
+			return nil, errors.New("Failed to parse authorized key")
+		}
 
-    return userKey, nil
-  }
+		return userKey, nil
+	}
 
-  key, err := rsa.GenerateKey(rand.Reader, 2048)
-  if err != nil {
-    return nil, errors.New("Failed to generate key pair")
-  }
-  userKey.PublicKey, err = ssh.NewPublicKey(key.Public())
-  if err != nil {
-    return nil, errors.New("Failed to extract public key from generated key pair")
-  }
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return nil, errors.New("Failed to generate key pair")
+	}
+	userKey.PublicKey, err = ssh.NewPublicKey(key.Public())
+	if err != nil {
+		return nil, errors.New("Failed to extract public key from generated key pair")
+	}
 
-  // To support Inspec calling back to us we need to write
-  // this file down
-  privateKeyDer := x509.MarshalPKCS1PrivateKey(key)
-  privateKeyBlock := pem.Block{
-    Type:    "RSA PRIVATE KEY",
-    Headers: nil,
-    Bytes:   privateKeyDer,
-  }
-  tf, err := ioutil.TempFile("", "packer-provisioner-bolt.*.key")
-  if err != nil {
-    return nil, errors.New("failed to create temp file for generated key")
-  }
-  _, err = tf.Write(pem.EncodeToMemory(&privateKeyBlock))
-  if err != nil {
-    return nil, errors.New("failed to write private key to temp file")
-  }
+	// To support Inspec calling back to us we need to write
+	// this file down
+	privateKeyDer := x509.MarshalPKCS1PrivateKey(key)
+	privateKeyBlock := pem.Block{
+		Type:    "RSA PRIVATE KEY",
+		Headers: nil,
+		Bytes:   privateKeyDer,
+	}
+	tf, err := ioutil.TempFile("", "packer-provisioner-bolt.*.key")
+	if err != nil {
+		return nil, errors.New("failed to create temp file for generated key")
+	}
+	_, err = tf.Write(pem.EncodeToMemory(&privateKeyBlock))
+	if err != nil {
+		return nil, errors.New("failed to write private key to temp file")
+	}
 
-  err = tf.Close()
-  if err != nil {
-    return nil, errors.New("failed to close private key temp file")
-  }
-  userKey.privKeyFile = tf.Name()
+	err = tf.Close()
+	if err != nil {
+		return nil, errors.New("failed to close private key temp file")
+	}
+	userKey.privKeyFile = tf.Name()
 
-  return userKey, nil
+	return userKey, nil
 }
 
 type signer struct {
