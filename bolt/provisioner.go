@@ -1,4 +1,5 @@
 //go:generate mapstructure-to-hcl2 -type Config
+
 package bolt
 
 import (
@@ -25,15 +26,14 @@ import (
 	"sync"
 	"unicode"
 
+	"golang.org/x/crypto/ssh"
+
 	"github.com/hashicorp/hcl/v2/hcldec"
 	"github.com/hashicorp/packer/common"
 	"github.com/hashicorp/packer/common/adapter"
-	commonhelper "github.com/hashicorp/packer/helper/common"
 	"github.com/hashicorp/packer/helper/config"
 	"github.com/hashicorp/packer/packer"
-	"github.com/hashicorp/packer/packer/tmp"
 	"github.com/hashicorp/packer/template/interpolate"
-	"golang.org/x/crypto/ssh"
 )
 
 // Config data passed from the template JSON
@@ -43,6 +43,15 @@ type Config struct {
 
 	// The command to run bolt
 	Command string
+
+	// The Backend to run bolt on
+	Backend string `mapstructure:"backend"`
+
+	// The host to run bolt on
+	Host string `mapstructure:"host"`
+
+	// The Password to run with bolt. Only used for WinRM
+	Password string `mapstructure:"password"`
 
 	// Extra options to pass to the bolt command
 	ExtraArguments []string `mapstructure:"extra_arguments"`
@@ -65,12 +74,25 @@ type Config struct {
 	// The bolt inventory file
 	InventoryFile string `mapstructure:"inventory_file"`
 
+	// Connection Timeout value
+	ConnectTimeout int `mapstructure:"connect_timeout"`
+
+	// The directory in which to place the
+	//  temporary generated Bolt inventory file. By default, this is the
+	//  system-specific temporary file location. The fully-qualified name of this
+	//  temporary file will be passed to the `-i` argument of the `Bolt` command
+	//  when this provisioner runs Bolt. Specify this if you have an existing
+	//  inventory directory with `host_vars` `group_vars` that you would like to
+	//  use in the playbook that this provisioner will run.
+	InventoryDirectory string `mapstructure:"inventory_directory"`
+
 	LocalPort            int    `mapstructure:"local_port"`
 	SkipVersionCheck     bool   `mapstructure:"skip_version_check"`
 	User                 string `mapstructure:"user"`
 	SSHHostKeyFile       string `mapstructure:"ssh_host_key_file"`
 	SSHAuthorizedKeyFile string `mapstructure:"ssh_authorized_key_file"`
-	WinRMSSLVerify       bool   `mapstructure:"winrm_ssl_verify"`
+	NoWinRMSSLVerify     bool   `mapstructure:"no_winrm_ssl_verify"`
+	NoWinRMSSL           bool   `mapstructure:"no_winrm_ssl"`
 }
 
 // Provisioner data passed to the provision operation
@@ -82,11 +104,6 @@ type Provisioner struct {
 	boltMajVersion uint
 }
 
-// PassthroughTemplate data passed for the Windows WinRM configuration
-type PassthroughTemplate struct {
-	WinRMPassword string
-}
-
 func (p *Provisioner) ConfigSpec() hcldec.ObjectSpec {
 	return p.config.FlatMapstructure().HCL2Spec()
 }
@@ -94,12 +111,6 @@ func (p *Provisioner) ConfigSpec() hcldec.ObjectSpec {
 // Prepare the config data for provisioning
 func (p *Provisioner) Prepare(raws ...interface{}) error {
 	p.done = make(chan struct{})
-
-	// Create passthrough for winrm password so we can fill it in once we know
-	// it
-	p.config.ctx.Data = &PassthroughTemplate{
-		WinRMPassword: `{{.WinRMPassword}}`,
-	}
 
 	err := config.Decode(&p.config, &config.DecodeOpts{
 		Interpolate:        true,
@@ -113,6 +124,22 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	}
 
 	var errs *packer.MultiError
+
+	// Check that the authorized key file exists
+	if len(p.config.SSHAuthorizedKeyFile) > 0 {
+		err = validateFileConfig(p.config.SSHAuthorizedKeyFile, "ssh_authorized_key_file", true)
+		if err != nil {
+			log.Println(p.config.SSHAuthorizedKeyFile, "does not exist")
+			errs = packer.MultiErrorAppend(errs, err)
+		}
+	}
+	if len(p.config.SSHHostKeyFile) > 0 {
+		err = validateFileConfig(p.config.SSHHostKeyFile, "ssh_host_key_file", true)
+		if err != nil {
+			log.Println(p.config.SSHHostKeyFile, "does not exist")
+			errs = packer.MultiErrorAppend(errs, err)
+		}
+	}
 
 	// Defaults
 	if p.config.Command == "" {
@@ -130,7 +157,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	}
 
 	if len(p.config.BoltModulePath) > 0 {
-		err = validateModuleDirectoryConfig(p.config.BoltModulePath)
+		err = validateDirectoryConfig(p.config.BoltModulePath)
 		if err != nil {
 			log.Println(p.config.BoltModulePath, "does not exist")
 			errs = packer.MultiErrorAppend(errs, err)
@@ -144,6 +171,10 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		}
 	}
 
+	if p.config.Host == "" {
+		p.config.Host = "127.0.0.1"
+	}
+
 	if p.config.User == "" {
 		usr, err := user.Current()
 		if err != nil {
@@ -155,6 +186,18 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 
 	if p.config.User == "" {
 		errs = packer.MultiErrorAppend(errs, fmt.Errorf("user: could not determine current user from environment"))
+	}
+
+	if p.config.LocalPort > 65535 {
+		errs = packer.MultiErrorAppend(errs, fmt.Errorf("local_port: %d must be a valid port", p.config.LocalPort))
+	}
+
+	if len(p.config.InventoryDirectory) > 0 {
+		err = validateDirectoryConfig(p.config.InventoryDirectory)
+		if err != nil {
+			log.Println(p.config.InventoryDirectory, "does not exist")
+			errs = packer.MultiErrorAppend(errs, err)
+		}
 	}
 
 	if errs != nil && len(errs.Errors) > 0 {
@@ -193,6 +236,37 @@ func (p *Provisioner) getVersion() error {
 // Provision using the Puppet Bolt provisioner
 func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.Communicator, generatedData map[string]interface{}) error {
 	ui.Say("Provisioning with Puppet Bolt...")
+	p.config.ctx.Data = generatedData
+
+	if p.config.Backend == "" {
+		p.config.Backend = generatedData["ConnType"].(string)
+	}
+
+	userp, err := interpolate.Render(p.config.User, &p.config.ctx)
+	if err != nil {
+		return fmt.Errorf("Could not interpolate bolt user: %s", err)
+	}
+
+	host, err := interpolate.Render(p.config.Host, &p.config.ctx)
+	if err != nil {
+		return fmt.Errorf("Could not interpolate bolt host: %s", err)
+	}
+
+ 	if p.config.Backend == "winrm" {
+		host = generatedData["Host"].(string)
+		userp = generatedData["User"].(string)
+		p.config.Password = generatedData["Password"].(string)
+
+		local_port := 5986
+		if p.config.NoWinRMSSL {
+			local_port = 5985
+		}
+
+		p.config.LocalPort = local_port
+	}
+
+	p.config.User = userp
+	p.config.Host = host
 
 	k, err := newUserKey(p.config.SSHAuthorizedKeyFile)
 	if err != nil {
@@ -200,6 +274,10 @@ func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.C
 	}
 
 	hostSigner, err := newSigner(p.config.SSHHostKeyFile)
+	if err != nil {
+		return fmt.Errorf("error creating host signer: %s", err)
+	}
+
 	// Remove the private key file
 	if len(k.privKeyFile) > 0 {
 		defer os.Remove(k.privKeyFile)
@@ -217,6 +295,7 @@ func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.C
 
 			return nil, nil
 		},
+    	IsUserAuthority: func(k ssh.PublicKey) bool { return true },
 	}
 
 	config := &ssh.ServerConfig{
@@ -284,26 +363,14 @@ func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.C
 
 }
 
-// Cancel the provision operation
-func (p *Provisioner) Cancel() {
-	if p.done != nil {
-		close(p.done)
-	}
-	if p.adapter != nil {
-		p.adapter.Shutdown()
-	}
-	os.Exit(0)
-}
-
 func (p *Provisioner) executeBolt(ui packer.Ui, comm packer.Communicator, privKeyFile string) error {
-	inventory := p.config.InventoryFile
 	bolttask := p.config.BoltTask
 	boltplan := p.config.BoltPlan
 	boltmodulepath := p.config.BoltModulePath
 	boltparams := p.config.BoltParams
 
 	var envvars []string
-	target := "ssh://127.0.0.1:" + strconv.Itoa(p.config.LocalPort)
+	target := fmt.Sprintf("%s://%s:%s", p.config.Backend, p.config.Host, strconv.Itoa(p.config.LocalPort))
 	var boltcommand string
 	if p.config.BoltTask != "" {
 		boltcommand = "task"
@@ -330,21 +397,41 @@ func (p *Provisioner) executeBolt(ui packer.Ui, comm packer.Communicator, privKe
 		args = append(args, "--modulepath", boltmodulepath)
 	}
 
-	if p.config.InventoryFile != "" {
-		args = append(args, "--inventoryfile", inventory)
+	args = append(args, "--targets", target)
+	args = append(args, "--user", p.config.User)
+
+	if p.config.Backend == "ssh" {
+		args = append(args, "--no-host-key-check")
+		args = append(args, "--private-key", privKeyFile)
+	} else if p.config.Backend == "winrm" {
+		if p.config.InventoryFile == "" {
+			err := p.createInventoryFile()
+		    if err != nil {
+		      return err
+		    }
+
+			defer os.Remove(p.config.InventoryFile)
+		}
+
+		args = append(args, "--inventoryfile", p.config.InventoryFile)
+
+		envvars = append(envvars, fmt.Sprintf("BOLT_PASSWORD=%s", p.config.Password))
+		envvars = append(envvars, fmt.Sprintf("BOLT_USER=%s", p.config.User))
+
+		if p.config.NoWinRMSSL {
+			args = append(args, "--no-ssl")
+		}
+
+		if p.config.NoWinRMSSLVerify {
+			args = append(args, "--no-ssl-verify")
+		}
+	} else {
+		return fmt.Errorf("Backend must be either SSH or Winrm. Given: %s", p.config.Backend)
 	}
 
-	args = append(args, "--nodes", target)
-	args = append(args, "--no-host-key-check")
-	args = append(args, "--user", p.config.User)
-	args = append(args, "--private-key", privKeyFile)
-	//	if len(privKeyFile) > 0 {
-	// Changed this from using --private-key to supplying -e bolt_ssh_private_key_file as the latter
-	// is treated as a highest priority variable, and thus prevents overriding by dynamic variables
-	// as seen in #5852
-	// args = append(args, "--private-key", privKeyFile)
-	//		args = append(args, fmt.Sprintf("--private-key %s", privKeyFile))
-	//	}
+	if p.config.ConnectTimeout > 0 {
+		args = append(args, "--connect-timeout", strconv.Itoa(p.config.ConnectTimeout))
+	}
 
 	// expose packer_http_addr extra variable
 	httpAddr := common.GetHTTPAddr()
@@ -397,15 +484,7 @@ func (p *Provisioner) executeBolt(ui packer.Ui, comm packer.Communicator, privKe
 	go repeat(stdout)
 	go repeat(stderr)
 
-	// remove winrm password from command, if it's been added
-	flattenedCmd := strings.Join(cmd.Args, " ")
-	sanitized := flattenedCmd
-	if len(getWinRMPassword(p.config.PackerBuildName)) > 0 {
-		sanitized = strings.Replace(sanitized,
-			getWinRMPassword(p.config.PackerBuildName), "*****", -1)
-	}
-	ui.Say(fmt.Sprintf("Executing Bolt: %s", sanitized))
-
+	ui.Say(fmt.Sprintf("Executing Bolt: %s", strings.Join(cmd.Args, " ")))
 	if err := cmd.Start(); err != nil {
 		return err
 	}
@@ -414,6 +493,43 @@ func (p *Provisioner) executeBolt(ui packer.Ui, comm packer.Communicator, privKe
 	if err != nil {
 		return fmt.Errorf("Non-zero exit status: %s", err)
 	}
+
+	return nil
+}
+
+const WinRMInventory = `---
+config:
+  winrm:
+    user:
+      _plugin: env_var
+      var: BOLT_USER
+    password:
+      _plugin: env_var
+      var: BOLT_PASSWORD
+`
+
+func (p *Provisioner) createInventoryFile() error {
+	log.Printf("Creating inventory file for Bolt WinRM run...")
+	tf, err := ioutil.TempFile(p.config.InventoryDirectory, "packer-provisioner-bolt.*.yaml")
+	if err != nil {
+		return fmt.Errorf("failed to create temp file for generated key")
+	}
+
+	w := bufio.NewWriter(tf)
+	w.WriteString(WinRMInventory)
+
+	if err := w.Flush(); err != nil {
+	tf.Close()
+		os.Remove(tf.Name())
+		return fmt.Errorf("Error preparing packer attributes file: %s", err)
+	}
+
+	err = tf.Close()
+	if err != nil {
+		return fmt.Errorf("failed to write private key to temp file")
+	}
+
+	p.config.InventoryFile = tf.Name()
 
 	return nil
 }
@@ -431,12 +547,28 @@ func convertParams(m map[interface{}]interface{}) map[string]interface{} {
 	return res
 }
 
-func validateModuleDirectoryConfig(name string) error {
+func validateFileConfig(name string, config string, req bool) error {
+	if req {
+		if name == "" {
+			return fmt.Errorf("%s must be specified.", config)
+		}
+	}
 	info, err := os.Stat(name)
 	if err != nil {
-		return fmt.Errorf("modulepath: %s is invalid: %s", name, err)
+		return fmt.Errorf("%s: %s is invalid: %s", config, name, err)
+	} else if info.IsDir() {
+		return fmt.Errorf("%s: %s must point to a file", config, name)
+	}
+	return nil
+}
+
+
+func validateDirectoryConfig(name string) error {
+	info, err := os.Stat(name)
+	if err != nil {
+		return fmt.Errorf("Directory: %s is invalid: %s", name, err)
 	} else if !info.IsDir() {
-		return fmt.Errorf("modulepath: %s must point to a directory", name)
+		return fmt.Errorf("Directory: %s must point to a directory", name)
 	}
 	return nil
 }
@@ -478,7 +610,7 @@ func newUserKey(pubKeyFile string) (*userKey, error) {
 		Headers: nil,
 		Bytes:   privateKeyDer,
 	}
-	tf, err := tmp.File("bolt-key")
+	tf, err := ioutil.TempFile("", "packer-provisioner-bolt.*.key")
 	if err != nil {
 		return nil, errors.New("failed to create temp file for generated key")
 	}
@@ -528,10 +660,4 @@ func newSigner(privKeyFile string) (*signer, error) {
 	}
 
 	return signer, nil
-}
-
-func getWinRMPassword(buildName string) string {
-	winRMPass, _ := commonhelper.RetrieveSharedState("winrm_password", buildName)
-	packer.LogSecretFilter.Set(winRMPass)
-	return winRMPass
 }

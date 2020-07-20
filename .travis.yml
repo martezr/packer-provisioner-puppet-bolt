@@ -1,7 +1,7 @@
 language: go
 go:
-  - 1.12.7
-env: 
+  - 1.14.4
+env:
   - GO111MODULE=on
 install: true
 script: go test -v -mod=vendor ./...
