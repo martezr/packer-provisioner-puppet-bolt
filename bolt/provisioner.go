@@ -88,11 +88,13 @@ type Config struct {
 
 	LocalPort            int    `mapstructure:"local_port"`
 	SkipVersionCheck     bool   `mapstructure:"skip_version_check"`
+	RunAs                string `mapstructure:"run_as"`
 	User                 string `mapstructure:"user"`
 	SSHHostKeyFile       string `mapstructure:"ssh_host_key_file"`
 	SSHAuthorizedKeyFile string `mapstructure:"ssh_authorized_key_file"`
 	NoWinRMSSLVerify     bool   `mapstructure:"no_winrm_ssl_verify"`
 	NoWinRMSSL           bool   `mapstructure:"no_winrm_ssl"`
+	LogLevel             string `mapstructure:"log_level"`
 }
 
 // Provisioner data passed to the provision operation
@@ -156,11 +158,25 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 		errs = packer.MultiErrorAppend(errs, fmt.Errorf("A bolt task and bolt plan cannot be specified at the same time"))
 	}
 
+	// Validate that run_as is only specified when the backend is SSH
+	if p.config.RunAs != "" && p.config.Backend != "ssh" {
+		errs = packer.MultiErrorAppend(errs, fmt.Errorf("The run_as setting is only supported with the ssh backend"))
+	}
+
+	// Validate that the specified module path exists
 	if len(p.config.BoltModulePath) > 0 {
 		err = validateDirectoryConfig(p.config.BoltModulePath)
 		if err != nil {
 			log.Println(p.config.BoltModulePath, "does not exist")
 			errs = packer.MultiErrorAppend(errs, err)
+		}
+	}
+
+	// Validate that the specified log level is valid
+	validLogLevels := []string{"debug", "info", "notice", "warn", "error", "fatal", "any"}
+	if p.config.LogLevel != "" {
+		if !contains(validLogLevels, p.config.LogLevel) {
+			errs = packer.MultiErrorAppend(errs, fmt.Errorf("%s is not a valid log level (debug, info, notice, warn, error, fatal, any)", p.config.LogLevel))
 		}
 	}
 
@@ -252,17 +268,17 @@ func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.C
 		return fmt.Errorf("Could not interpolate bolt host: %s", err)
 	}
 
- 	if p.config.Backend == "winrm" {
+	if p.config.Backend == "winrm" {
 		host = generatedData["Host"].(string)
 		userp = generatedData["User"].(string)
 		p.config.Password = generatedData["Password"].(string)
 
-		local_port := 5986
+		localPort := 5986
 		if p.config.NoWinRMSSL {
-			local_port = 5985
+			localPort = 5985
 		}
 
-		p.config.LocalPort = local_port
+		p.config.LocalPort = localPort
 	}
 
 	p.config.User = userp
@@ -295,7 +311,7 @@ func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.C
 
 			return nil, nil
 		},
-    	IsUserAuthority: func(k ssh.PublicKey) bool { return true },
+		IsUserAuthority: func(k ssh.PublicKey) bool { return true },
 	}
 
 	config := &ssh.ServerConfig{
@@ -400,15 +416,19 @@ func (p *Provisioner) executeBolt(ui packer.Ui, comm packer.Communicator, privKe
 	args = append(args, "--targets", target)
 	args = append(args, "--user", p.config.User)
 
+	if p.config.Backend == "ssh" && p.config.RunAs != "" {
+		args = append(args, "--run-as", p.config.RunAs)
+	}
+
 	if p.config.Backend == "ssh" {
 		args = append(args, "--no-host-key-check")
 		args = append(args, "--private-key", privKeyFile)
 	} else if p.config.Backend == "winrm" {
 		if p.config.InventoryFile == "" {
 			err := p.createInventoryFile()
-		    if err != nil {
-		      return err
-		    }
+			if err != nil {
+				return err
+			}
 
 			defer os.Remove(p.config.InventoryFile)
 		}
@@ -431,6 +451,10 @@ func (p *Provisioner) executeBolt(ui packer.Ui, comm packer.Communicator, privKe
 
 	if p.config.ConnectTimeout > 0 {
 		args = append(args, "--connect-timeout", strconv.Itoa(p.config.ConnectTimeout))
+	}
+
+	if p.config.LogLevel != "" {
+		args = append(args, "--log-level", p.config.LogLevel)
 	}
 
 	// expose packer_http_addr extra variable
@@ -497,6 +521,7 @@ func (p *Provisioner) executeBolt(ui packer.Ui, comm packer.Communicator, privKe
 	return nil
 }
 
+// WinRMInventory defines the default Bolt inventory used for WinRM connections
 const WinRMInventory = `---
 config:
   winrm:
@@ -519,7 +544,7 @@ func (p *Provisioner) createInventoryFile() error {
 	w.WriteString(WinRMInventory)
 
 	if err := w.Flush(); err != nil {
-	tf.Close()
+		tf.Close()
 		os.Remove(tf.Name())
 		return fmt.Errorf("Error preparing packer attributes file: %s", err)
 	}
@@ -561,7 +586,6 @@ func validateFileConfig(name string, config string, req bool) error {
 	}
 	return nil
 }
-
 
 func validateDirectoryConfig(name string) error {
 	info, err := os.Stat(name)
@@ -660,4 +684,13 @@ func newSigner(privKeyFile string) (*signer, error) {
 	}
 
 	return signer, nil
+}
+
+func contains(slice []string, inputValue string) bool {
+	for _, sliceValue := range slice {
+		if sliceValue == inputValue {
+			return true
+		}
+	}
+	return false
 }

@@ -32,6 +32,8 @@ type FlatConfig struct {
 	LocalPort            *int                        `mapstructure:"local_port" cty:"local_port" hcl:"local_port"`
 	SkipVersionCheck     *bool                       `mapstructure:"skip_version_check" cty:"skip_version_check" hcl:"skip_version_check"`
 	User                 *string                     `mapstructure:"user" cty:"user" hcl:"user"`
+	RunAs                *string                     `mapstructure:"run_as" cty:"run_as" hcl:"run_as"`
+	LogLevel             *string                     `mapstructure:"log_level" cty:"log_level" hcl:"log_level"`
 	SSHHostKeyFile       *string                     `mapstructure:"ssh_host_key_file" cty:"ssh_host_key_file" hcl:"ssh_host_key_file"`
 	SSHAuthorizedKeyFile *string                     `mapstructure:"ssh_authorized_key_file" cty:"ssh_authorized_key_file" hcl:"ssh_authorized_key_file"`
 	NoWinRMSSLVerify     *bool                       `mapstructure:"no_winrm_ssl_verify" cty:"no_winrm_ssl_verify" hcl:"no_winrm_ssl_verify"`
@@ -71,12 +73,14 @@ func (*FlatConfig) HCL2Spec() map[string]hcldec.Spec {
 		"connect_timeout":            &hcldec.AttrSpec{Name: "connect_timeout", Type: cty.Number, Required: false},
 		"inventory_directory":        &hcldec.AttrSpec{Name: "inventory_directory", Type: cty.String, Required: false},
 		"local_port":                 &hcldec.AttrSpec{Name: "local_port", Type: cty.Number, Required: false},
+		"run_as":                     &hcldec.AttrSpec{Name: "run_as", Type: cty.String, Required: false},
 		"skip_version_check":         &hcldec.AttrSpec{Name: "skip_version_check", Type: cty.Bool, Required: false},
 		"user":                       &hcldec.AttrSpec{Name: "user", Type: cty.String, Required: false},
 		"ssh_host_key_file":          &hcldec.AttrSpec{Name: "ssh_host_key_file", Type: cty.String, Required: false},
 		"ssh_authorized_key_file":    &hcldec.AttrSpec{Name: "ssh_authorized_key_file", Type: cty.String, Required: false},
 		"no_winrm_ssl_verify":        &hcldec.AttrSpec{Name: "no_winrm_ssl_verify", Type: cty.Bool, Required: false},
 		"no_winrm_ssl":               &hcldec.AttrSpec{Name: "no_winrm_ssl", Type: cty.Bool, Required: false},
+		"log_level":                  &hcldec.AttrSpec{Name: "log_level", Type: cty.String, Required: false},
 	}
 	return s
 }

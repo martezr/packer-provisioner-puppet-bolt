@@ -20,88 +20,6 @@ Note:: Any remote_user defined in tasks will be ignored. Packer will always conn
 Usage
 ======
 
-» Linux vSphere Example
-This is a complete Linux reference template for VMware vSphere.
-
-```json
-{
-  "variables": {
-    "vsphere_password": "",
-    "ssh_password": ""
-  },
-  "builders": [
-    {
-      "type": "vsphere-clone",
-
-      "vcenter_server":      "10.0.0.205",
-      "username":            "administrator@vsphere.local",
-      "password":            "{{user `vsphere_password`}}",
-      "insecure_connection": "true",
-
-      "template": "centos7base",
-      "vm_name":  "alpine-clone",
-      "cluster": "GRT-Cluster",
-      "host": "10.0.0.246",
-
-      "communicator": "ssh",
-      "ssh_username": "root",
-      "ssh_password": "{{user `ssh_password`}}"
-    }
-  ],
-  "provisioners": [
-    {
-      "type": "puppet-bolt",
-      "user": "root",
-      "bolt_plan":"boltdemo::consul_server",
-      "bolt_module_path": "modules/",
-      "bolt_params": {
-        "version": "1.2.3"
-      }
-    }
-  ]
-}
-```
-
-» Windows vSphere Example
-This is a complete Windows reference template for VMware vSphere.
-
-```json
-{
-  "variables": {
-    "vsphere_password": "",
-    "winrm_password": ""
-  },
-  "builders": [
-    {
-      "type": "vsphere-clone",
-
-      "vcenter_server":      "10.0.0.205",
-      "username":            "administrator@vsphere.local",
-      "password":            "{{user `vsphere_password`}}",
-      "insecure_connection": "true",
-
-      "template": "grt2k16temp",
-      "vm_name":  "winboltpacker",
-      "cluster": "GRT-Cluster",
-      "host": "10.0.0.246",
-
-      "communicator": "winrm",
-      "winrm_port": "5985",
-      "winrm_insecure": true,
-      "winrm_username": "administrator",
-      "winrm_password": "{{user `winrm_password`}}"
-    }
-  ],
-  "provisioners": [
-    {
-      "type": "puppet-bolt",
-      "user": "administrator",
-      "bolt_task": "facts"
-    }
-  ]
-}
-```
-
 Configuration Reference
 ======
 
@@ -117,19 +35,31 @@ or
 Optional Parameters:
 ------
 
-- bolt_module_path (string) - The path that Bolt should look for modules.
+| Name | Type | Description |
+|------|------|-------------|
+|bolt_module_path| string |The path that Bolt should look for modules |
+|bolt_params | json | The parameters to pass the Bolt Task or Plan. |
+|inventory_file | string | The inventory file to use during provisioning. When unspecified, Packer will create a temporary inventory file and will use the host_alias.|
+|local_port|uint|The port on which to attempt to listen for SSH connections. This value is a starting point. The provisioner will attempt listen for SSH connections on the first available of ten ports, starting at local_port. A system-chosen port is used when local_port is missing or empty.|
+|user|string|The bolt_user to use. Defaults to the user running packer.|
+|log_level|string|The level of logging (debug, error, info, notice, warn, fatal, any)|
 
-- bolt_params (json) - The parameters to pass the Bolt Task or Plan.
 
-- inventory_file (string) - The inventory file to use during provisioning. When unspecified, Packer will create a temporary inventory file and will use the host_alias.
+SSH Settings
+------------
+| Name | Type | Description |
+|------|------|-------------|
+|ssh_host_key_file|string|The SSH key that will be used to run the SSH server on the host machine to forward commands to the target machine. Bolt connects to this server and will validate the identity of the server using the system known_hosts. The default behavior is to generate and use a onetime key.|
+|ssh_authorized_key_file|string|The SSH public key of the Bolt ssh_user. The default behavior is to generate and use a onetime key. If this key is generated, the corresponding private key is passed to bolt with the --private-key-file option.|
+|run_as|string|The user to run as for privilege escalation|
 
-- local_port (uint) - The port on which to attempt to listen for SSH connections. This value is a starting point. The provisioner will attempt listen for SSH connections on the first available of ten ports, starting at local_port. A system-chosen port is used when local_port is missing or empty.
-
-- ssh_host_key_file (string) - The SSH key that will be used to run the SSH server on the host machine to forward commands to the target machine. Bolt connects to this server and will validate the identity of the server using the system known_hosts. The default behavior is to generate and use a onetime key.
-
-- ssh_authorized_key_file (string) - The SSH public key of the Bolt ssh_user. The default behavior is to generate and use a onetime key. If this key is generated, the corresponding private key is passed to bolt with the --private-key-file option.
-
-- user (string) - The bolt_user to use. Defaults to the user running packer.
+WinRM Settings
+--------------
+| Name | Type | Description |
+|------|------|-------------|
+|password|string|The password used to authenticate to the Windows machine|
+|no_winrm_ssl_verify|boolean|Whether to verify that the target's certificate matches the cacert|
+|no_winrm_ssl|boolean|Whether to use secure https connections for WinRM|
 
 ## License
 
