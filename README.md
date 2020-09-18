@@ -39,11 +39,12 @@ Optional Parameters:
 |------|------|-------------|
 |bolt_module_path| string |The path that Bolt should look for modules |
 |bolt_params | json | The parameters to pass the Bolt Task or Plan. |
+|install_modules|boolean|Whether to install modules from a Bolt project using the Puppetfile|
 |inventory_file | string | The inventory file to use during provisioning. When unspecified, Packer will create a temporary inventory file and will use the host_alias.|
 |local_port|uint|The port on which to attempt to listen for SSH connections. This value is a starting point. The provisioner will attempt listen for SSH connections on the first available of ten ports, starting at local_port. A system-chosen port is used when local_port is missing or empty.|
-|user|string|The bolt_user to use. Defaults to the user running packer.|
 |log_level|string|The level of logging (debug, error, info, notice, warn, fatal, any)|
-
+|project_path|string|The path that Bolt should look for a Bolt project directory|
+|user|string|The bolt_user to use. Defaults to the user running packer.|
 
 SSH Settings
 ------------

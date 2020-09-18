@@ -38,6 +38,8 @@ type FlatConfig struct {
 	SSHAuthorizedKeyFile *string                     `mapstructure:"ssh_authorized_key_file" cty:"ssh_authorized_key_file" hcl:"ssh_authorized_key_file"`
 	NoWinRMSSLVerify     *bool                       `mapstructure:"no_winrm_ssl_verify" cty:"no_winrm_ssl_verify" hcl:"no_winrm_ssl_verify"`
 	NoWinRMSSL           *bool                       `mapstructure:"no_winrm_ssl" cty:"no_winrm_ssl" hcl:"no_winrm_ssl"`
+	InstallModules       *bool                       `mapstructure:"install_modules" cty:"install_modules" hcl:"install_modules"`
+	ProjectPath          *string                     `mapstructure:"project_path" cty:"project_path" hcl:"project_path"`
 }
 
 // FlatMapstructure returns a new FlatConfig.
@@ -81,6 +83,8 @@ func (*FlatConfig) HCL2Spec() map[string]hcldec.Spec {
 		"no_winrm_ssl_verify":        &hcldec.AttrSpec{Name: "no_winrm_ssl_verify", Type: cty.Bool, Required: false},
 		"no_winrm_ssl":               &hcldec.AttrSpec{Name: "no_winrm_ssl", Type: cty.Bool, Required: false},
 		"log_level":                  &hcldec.AttrSpec{Name: "log_level", Type: cty.String, Required: false},
+		"install_modules":            &hcldec.AttrSpec{Name: "install_modules", Type: cty.String, Required: false},
+		"project_path":               &hcldec.AttrSpec{Name: "project_path", Type: cty.String, Required: false},
 	}
 	return s
 }

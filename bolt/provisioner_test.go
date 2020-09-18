@@ -238,6 +238,47 @@ func TestProvisionerPrepare_InventoryDirectory(t *testing.T) {
 	}
 }
 
+func TestProvisionerPrepare_ProjectDirectory(t *testing.T) {
+	var p Provisioner
+	config := testConfig(t)
+	defer os.Remove(config["command"].(string))
+
+	hostkeyFile, err := ioutil.TempFile("", "hostkey")
+	if err != nil {
+		t.Fatalf("err: %s", err)
+	}
+	defer os.Remove(hostkeyFile.Name())
+
+	publickeyFile, err := ioutil.TempFile("", "publickey")
+	if err != nil {
+		t.Fatalf("err: %s", err)
+	}
+	defer os.Remove(publickeyFile.Name())
+
+	config["ssh_host_key_file"] = hostkeyFile.Name()
+	config["ssh_authorized_key_file"] = publickeyFile.Name()
+	config["user"] = "root"
+	config["bolt_task"] = "facts"
+
+	config["project_path"] = "doesnotexist"
+	err = p.Prepare(config)
+	if err == nil {
+		t.Errorf("should error if project_path does not exist")
+	}
+
+	projectDirectory, err := ioutil.TempDir("", "some_project_dir")
+	if err != nil {
+		t.Fatalf("err: %s", err)
+	}
+	defer os.Remove(projectDirectory)
+
+	config["project_path"] = projectDirectory
+	err = p.Prepare(config)
+	if err != nil {
+		t.Fatalf("err: %s", err)
+	}
+}
+
 func TestProvisionerPrepare_BoltTask(t *testing.T) {
 	var p Provisioner
 	config := testConfig(t)

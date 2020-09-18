@@ -71,6 +71,9 @@ type Config struct {
 	// The bolt module path
 	BoltModulePath string `mapstructure:"bolt_module_path"`
 
+	// The bolt project path
+	ProjectPath string `mapstructure:"project_path"`
+
 	// The bolt inventory file
 	InventoryFile string `mapstructure:"inventory_file"`
 
@@ -95,6 +98,7 @@ type Config struct {
 	NoWinRMSSLVerify     bool   `mapstructure:"no_winrm_ssl_verify"`
 	NoWinRMSSL           bool   `mapstructure:"no_winrm_ssl"`
 	LogLevel             string `mapstructure:"log_level"`
+	InstallModules       bool   `mapstructure:"install_modules"`
 }
 
 // Provisioner data passed to the provision operation
@@ -165,9 +169,18 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 
 	// Validate that the specified module path exists
 	if len(p.config.BoltModulePath) > 0 {
-		err = validateDirectoryConfig(p.config.BoltModulePath)
+		err = validateDirectoryConfig(p.config.BoltModulePath, "bolt_module_path")
 		if err != nil {
 			log.Println(p.config.BoltModulePath, "does not exist")
+			errs = packer.MultiErrorAppend(errs, err)
+		}
+	}
+
+	// Validate that the specified project path exists
+	if len(p.config.ProjectPath) > 0 {
+		err = validateDirectoryConfig(p.config.ProjectPath, "project_path")
+		if err != nil {
+			log.Println(p.config.ProjectPath, "does not exist")
 			errs = packer.MultiErrorAppend(errs, err)
 		}
 	}
@@ -209,7 +222,7 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	}
 
 	if len(p.config.InventoryDirectory) > 0 {
-		err = validateDirectoryConfig(p.config.InventoryDirectory)
+		err = validateDirectoryConfig(p.config.InventoryDirectory, "inventory_directory")
 		if err != nil {
 			log.Println(p.config.InventoryDirectory, "does not exist")
 			errs = packer.MultiErrorAppend(errs, err)
@@ -219,6 +232,66 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	if errs != nil && len(errs.Errors) > 0 {
 		return errs
 	}
+	return nil
+}
+
+func (p *Provisioner) installModules(ui packer.Ui) error {
+	args := []string{"puppetfile", "install"}
+	boltprojectpath := p.config.ProjectPath
+	if p.config.ProjectPath != "" {
+		args = append(args, "--project", boltprojectpath)
+	}
+
+	cmd := exec.Command(p.config.Command, args...)
+	var envvars []string
+	cmd.Env = os.Environ()
+	if len(envvars) > 0 {
+		cmd.Env = append(cmd.Env, envvars...)
+	}
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return err
+	}
+
+	wg := sync.WaitGroup{}
+	repeat := func(r io.ReadCloser) {
+		reader := bufio.NewReader(r)
+		for {
+			line, err := reader.ReadString('\n')
+			if line != "" {
+				line = strings.TrimRightFunc(line, unicode.IsSpace)
+				ui.Message(line)
+			}
+			if err != nil {
+				if err == io.EOF {
+					break
+				} else {
+					ui.Error(err.Error())
+					break
+				}
+			}
+		}
+		wg.Done()
+	}
+	wg.Add(2)
+	go repeat(stdout)
+	go repeat(stderr)
+
+	ui.Say(fmt.Sprintf("Installing Puppet modules: %s", strings.Join(cmd.Args, " ")))
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	wg.Wait()
+	err = cmd.Wait()
+	if err != nil {
+		return fmt.Errorf("Non-zero exit status: %s", err)
+	}
+
 	return nil
 }
 
@@ -253,6 +326,13 @@ func (p *Provisioner) getVersion() error {
 func (p *Provisioner) Provision(ctx context.Context, ui packer.Ui, comm packer.Communicator, generatedData map[string]interface{}) error {
 	ui.Say("Provisioning with Puppet Bolt...")
 	p.config.ctx.Data = generatedData
+
+	if p.config.InstallModules {
+		err := p.installModules(ui)
+		if err != nil {
+			return fmt.Errorf("error installing modules: %s", err)
+		}
+	}
 
 	if p.config.Backend == "" {
 		p.config.Backend = generatedData["ConnType"].(string)
@@ -383,6 +463,7 @@ func (p *Provisioner) executeBolt(ui packer.Ui, comm packer.Communicator, privKe
 	bolttask := p.config.BoltTask
 	boltplan := p.config.BoltPlan
 	boltmodulepath := p.config.BoltModulePath
+	boltprojectpath := p.config.ProjectPath
 	boltparams := p.config.BoltParams
 
 	var envvars []string
@@ -411,6 +492,10 @@ func (p *Provisioner) executeBolt(ui packer.Ui, comm packer.Communicator, privKe
 
 	if p.config.BoltModulePath != "" {
 		args = append(args, "--modulepath", boltmodulepath)
+	}
+
+	if p.config.ProjectPath != "" {
+		args = append(args, "--project", boltprojectpath)
 	}
 
 	args = append(args, "--targets", target)
@@ -575,7 +660,7 @@ func convertParams(m map[interface{}]interface{}) map[string]interface{} {
 func validateFileConfig(name string, config string, req bool) error {
 	if req {
 		if name == "" {
-			return fmt.Errorf("%s must be specified.", config)
+			return fmt.Errorf("%s must be specified", config)
 		}
 	}
 	info, err := os.Stat(name)
@@ -587,12 +672,12 @@ func validateFileConfig(name string, config string, req bool) error {
 	return nil
 }
 
-func validateDirectoryConfig(name string) error {
+func validateDirectoryConfig(name string, setting string) error {
 	info, err := os.Stat(name)
 	if err != nil {
-		return fmt.Errorf("Directory: %s is invalid: %s", name, err)
+		return fmt.Errorf("Directory: %s specified for %s is invalid: %s", name, setting, err)
 	} else if !info.IsDir() {
-		return fmt.Errorf("Directory: %s must point to a directory", name)
+		return fmt.Errorf("Directory: %s specified for %s must point to a directory", name, setting)
 	}
 	return nil
 }
