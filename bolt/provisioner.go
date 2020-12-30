@@ -110,8 +110,33 @@ type Provisioner struct {
 	boltMajVersion uint
 }
 
+// BoltPlans are the output of bolt plan show to validate
+// that a specified plan exists
+type BoltPlans struct {
+	Plans      [][]string `json:"plans"`
+	ModulePath []string   `json:"modulepath"`
+}
+
 func (p *Provisioner) ConfigSpec() hcldec.ObjectSpec {
 	return p.config.FlatMapstructure().HCL2Spec()
+}
+
+func fetchBoltPlans() []string {
+	out, _ := exec.Command(p.config.Command, "plan", "show", "--format", "json").Output()
+	//	if err != nil {
+	//		return fmt.Errorf(
+	//			"Error running \"%s plan show --format json\": %s", p.config.Command, err.Error())
+	//	}
+	var data BoltPlans
+	if err := json.Unmarshal(out, &data); err != nil {
+		panic(err)
+	}
+
+	var validPlans []string
+	for _, plan := range data.Plans {
+		validPlans = append(validPlans, plan[0])
+	}
+	return validPlans
 }
 
 // Prepare the config data for provisioning
@@ -186,10 +211,18 @@ func (p *Provisioner) Prepare(raws ...interface{}) error {
 	}
 
 	// Validate that the specified log level is valid
-	validLogLevels := []string{"debug", "info", "notice", "warn", "error", "fatal", "any"}
+	validLogLevels := []string{"trace", "debug", "info", "warn", "error", "fatal"}
 	if p.config.LogLevel != "" {
 		if !contains(validLogLevels, p.config.LogLevel) {
-			errs = packer.MultiErrorAppend(errs, fmt.Errorf("%s is not a valid log level (debug, info, notice, warn, error, fatal, any)", p.config.LogLevel))
+			errs = packer.MultiErrorAppend(errs, fmt.Errorf("%s is not a valid log level (trace, debug, info, warn, error, fatal)", p.config.LogLevel))
+		}
+	}
+
+	// Validate that the specified plan is recognized by Bolt
+	if p.config.BoltPlan != "" {
+		validBoltPlans := fetchBoltPlans()
+		if !contains(validBoltPlans, p.config.BoltPlan) {
+			errs = packer.MultiErrorAppend(errs, fmt.Errorf("%s is not a recognized Bolt plan", p.config.BoltPlan))
 		}
 	}
 
