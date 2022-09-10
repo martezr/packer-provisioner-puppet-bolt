@@ -11,6 +11,9 @@ Packer Puppet Bolt Provisioner
 [report-badge]: https://goreportcard.com/badge/github.com/martezr/packer-provisioner-puppet-bolt
 [report]: https://goreportcard.com/report/github.com/martezr/packer-provisioner-puppet-bolt
 
+**This plugin has been superseded by the [packer-plugin-bolt](https://github.com/martezr/packer-plugin-bolt) repository 
+for newer versions of HashiCorp Packer***
+
 HashiCorp Packer plugin that provisions machines using [Puppet Bolt](https://puppet.com/products/bolt)
 
 The bolt Packer provisioner runs Puppet Bolt tasks. It runs an SSH server, executes bolt task run, and marshals Bolt tasks through the SSH server to the machine being provisioned by Packer.
