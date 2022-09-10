@@ -12,7 +12,7 @@ Packer Puppet Bolt Provisioner
 [report]: https://goreportcard.com/report/github.com/martezr/packer-provisioner-puppet-bolt
 
 **This plugin has been superseded by the [packer-plugin-bolt](https://github.com/martezr/packer-plugin-bolt) repository 
-for newer versions of HashiCorp Packer***
+for newer versions of HashiCorp Packer**
 
 HashiCorp Packer plugin that provisions machines using [Puppet Bolt](https://puppet.com/products/bolt)
 
